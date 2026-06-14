@@ -1,0 +1,7 @@
+{
+  "name": "Lattice DS Builder",
+  "id": "mini-lattice-ds-builder-001",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"]
+}

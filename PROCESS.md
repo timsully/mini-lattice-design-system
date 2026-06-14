@@ -183,22 +183,45 @@ The `app/page.tsx` renders a static dashboard using `lib/mock-data.ts`. Mock dat
 
 ---
 
-## Step 8: Build the Figma Design System
+## Step 8: Programmatically Create Figma Components (Plugin)
+
+### Why a plugin, not the REST API
+
+The Figma REST API is read-only. It exposes file structure, node metadata, and assets, but it cannot create or modify design nodes. There is no `POST /nodes` endpoint — the REST layer is strictly a reader.
+
+The only programmatic way to write into a Figma file is the **Figma Plugin API**, which runs a JavaScript sandbox inside the Figma desktop app. Plugins can create frames, components, variant sets, text layers, and apply styles in bulk.
+
+### How to run the plugin
+
+1. Open **Figma Desktop** → Plugins → Development → **Import plugin from manifest**
+2. Select `figma-plugin/manifest.json` from this repo
+3. Open the Lattice Design System file and navigate to the **Components** page
+4. Run the plugin — it creates all 13 components in ~2 seconds and zooms to fit
+
+### What the plugin creates
+
+The plugin (`figma-plugin/code.js`) places all 13 components in a 4-row grid:
+- **Row 1 (Atoms):** DispositionBadge, TemplateBadge, LiveBadge, TaskStatusBadge
+- **Row 2 (Molecules):** EntityRow, TaskRow, ProximityAlert, MetricCard
+- **Row 3 (Organisms):** EntityPanel, SystemLogEntry, SystemLog (TaskPanel at end of row 2)
+- **Row 4 (Template):** DashboardLayout (full 1440×900)
+
+Every component set uses the exact variant property names that the Code Connect files in `figma/` expect — `figma.enum("Disposition", ...)`, `figma.string("Logger")`, etc. — so no manual renaming is needed before publishing.
+
+---
+
+## Step 9: Build the Figma Design System Tokens
 
 ### Recommended Figma file structure:
 
-**Page 1: Tokens**
+**Page 1: Cover** (already exists)
+
+**Page 2: Components** (created by plugin)
+
+**Add Page: Tokens**
 - Color styles for all `--color-*` variables
 - Text styles for each typography use case
 - Define Figma Variables for every token (not just styles)
-
-**Page 2: Components**
-Build one component per file in `components/lattice/`:
-1. Start with the 4 badge components (smallest atoms)
-2. Build EntityRow and TaskRow (molecules)
-3. Build ProximityAlert and MetricCard (molecules)
-4. Build panel components (organisms)
-5. Build DashboardLayout (template)
 
 ### Critical naming rule:
 Every Figma variant property name and value must **exactly match** what's in the Code Connect `figma.enum()` calls. For example:
@@ -207,7 +230,7 @@ Every Figma variant property name and value must **exactly match** what's in the
 
 ---
 
-## Step 9: Set Up Figma Code Connect
+## Step 10: Set Up Figma Code Connect
 
 ### After publishing the Figma file:
 
@@ -231,18 +254,11 @@ When a designer selects a `DispositionBadge` in Figma and looks at the Dev panel
 
 ---
 
-## Step 10: Push to GitHub
+## Step 11: Push to GitHub
 
 ```bash
-cd /Users/anon2468/_repos/lattice-design-system
-git init  # already done by create-next-app
-git add .
-git commit -m "feat: initial lattice design system"
-
-# Create the repo on GitHub (via gh CLI or GitHub.com)
-gh repo create lattice-design-system --public
-git remote add origin https://github.com/<your-username>/lattice-design-system.git
-git push -u origin main
+cd /Users/anon2468/_repos/mini-lattice-design-system
+gh repo create mini-lattice-design-system --public --source . --push
 ```
 
 ---
