@@ -5,6 +5,13 @@
 // How to run:
 //   Figma Desktop → Plugins → Development → Import plugin from manifest
 //   Select this folder's manifest.json, then run the plugin.
+//
+// Sizing conventions used throughout:
+//   Atoms    — HORIZONTAL, hug both axes (AUTO/AUTO)
+//   Molecules — VERTICAL, hug height (AUTO), fixed width (FIXED)
+//   Organisms — VERTICAL, fixed height + fixed width; children use layoutAlign
+//               STRETCH + layoutGrow=1 so Figma reports fill/stretch correctly
+//   Template  — same as organisms at 1440×900
 
 (async () => {
 
@@ -40,33 +47,38 @@ await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
 await figma.loadFontAsync({ family: 'Inter', style: 'Medium' });
 await figma.loadFontAsync({ family: 'Inter', style: 'Semi Bold' });
 
-// Try monospace; fall back to Inter if unavailable in this Figma environment
 let MONO = { family: 'Roboto Mono', style: 'Regular' };
 try { await figma.loadFontAsync(MONO); } catch (_) { MONO = { family: 'Inter', style: 'Regular' }; }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const solid  = (c, o=1) => [{ type:'SOLID', color:c, opacity:o }];
-const stroke = (c, o=1) => [{ type:'SOLID', color:c, opacity:o }];
+const solid  = (c, o) => [{ type:'SOLID', color:c, opacity: o !== undefined ? o : 1 }];
+const strk   = (c, o) => [{ type:'SOLID', color:c, opacity: o !== undefined ? o : 1 }];
 
+// Apply auto-layout properties to any node
 function al(node, {
-  dir='HORIZONTAL', gap=6,
-  pl=8, pr=8, pt=5, pb=5,
-  mainAlign='MIN', crossAlign='CENTER',
-  mainSizing='AUTO', crossSizing='AUTO',
+  dir        = 'HORIZONTAL',
+  gap        = 6,
+  pl = 8, pr = 8, pt = 5, pb = 5,
+  mainAlign  = 'MIN',
+  crossAlign = 'CENTER',
+  mainSizing = 'AUTO',  // 'AUTO' = hug content, 'FIXED' = fixed size
+  crossSizing= 'AUTO',
 } = {}) {
-  node.layoutMode = dir;
-  node.primaryAxisSizingMode  = mainSizing;
-  node.counterAxisSizingMode  = crossSizing;
-  node.itemSpacing  = gap;
+  node.layoutMode              = dir;
+  node.primaryAxisSizingMode   = mainSizing;
+  node.counterAxisSizingMode   = crossSizing;
+  node.itemSpacing             = gap;
   node.paddingLeft  = pl;  node.paddingRight  = pr;
   node.paddingTop   = pt;  node.paddingBottom = pb;
-  node.primaryAxisAlignItems = mainAlign;
-  node.counterAxisAlignItems = crossAlign;
+  node.primaryAxisAlignItems   = mainAlign;
+  node.counterAxisAlignItems   = crossAlign;
 }
 
+// Text node helper
 function txt(chars, {
-  family=  'Inter', style='Regular',
-  size=12, color=C.ink, name, grow=false,
+  family = 'Inter', style = 'Regular',
+  size   = 12,      color = C.ink,
+  name, grow = false,
 } = {}) {
   const t = figma.createText();
   t.fontName   = { family, style };
@@ -78,7 +90,8 @@ function txt(chars, {
   return t;
 }
 
-function dot(color, size=6) {
+function dot(color, size) {
+  size = size !== undefined ? size : 6;
   const e = figma.createEllipse();
   e.name = 'dot';
   e.resize(size, size);
@@ -86,8 +99,9 @@ function dot(color, size=6) {
   return e;
 }
 
-// Component with auto-layout
-function comp(name, opts={}) {
+// Component node with auto-layout — atoms default to hug/hug
+function comp(name, opts) {
+  opts = opts || {};
   const c = figma.createComponent();
   c.name = name;
   al(c, opts);
@@ -96,8 +110,9 @@ function comp(name, opts={}) {
   return c;
 }
 
-// Frame with auto-layout (for sub-rows inside components)
-function frame(opts={}) {
+// Frame node with auto-layout
+function frame(opts) {
+  opts = opts || {};
   const f = figma.createFrame();
   if (opts.name) f.name = opts.name;
   al(f, opts);
@@ -107,33 +122,51 @@ function frame(opts={}) {
   return f;
 }
 
-// Finalise a component set after combineAsVariants — adds auto layout + padding
-function styleSet(set, spacing=12) {
-  set.layoutMode = 'HORIZONTAL';
-  set.layoutWrap = 'WRAP';
-  set.primaryAxisSizingMode = 'AUTO';
-  set.counterAxisSizingMode = 'AUTO';
-  set.itemSpacing = spacing;
-  set.counterAxisSpacing = spacing;
+// ── Helper: make a sub-row that fills its parent's cross-axis width
+// Used for rows inside vertical components so Figma reports "Fill container"
+function stretchRow(opts) {
+  opts = opts || {};
+  const f = frame(opts);
+  f.layoutAlign = 'STRETCH'; // fills parent width (counter axis for VERTICAL parent)
+  return f;
+}
+
+// ── Helper: make a body frame that fills width AND remaining height
+function stretchGrowBody(opts) {
+  opts = opts || {};
+  const f = frame(opts);
+  f.layoutAlign = 'STRETCH'; // fill width
+  f.layoutGrow  = 1;         // fill remaining height
+  return f;
+}
+
+// Finalise a component set — auto layout + padding so variants are spaced
+function styleSet(set, spacing) {
+  spacing = spacing !== undefined ? spacing : 12;
+  set.layoutMode             = 'HORIZONTAL';
+  set.layoutWrap             = 'WRAP';
+  set.primaryAxisSizingMode  = 'AUTO';
+  set.counterAxisSizingMode  = 'AUTO';
+  set.itemSpacing            = spacing;
+  set.counterAxisSpacing     = spacing;
   set.paddingLeft = set.paddingRight = set.paddingTop = set.paddingBottom = 20;
-  set.fills = solid(C.elevated);
+  set.fills        = solid(C.elevated);
   set.cornerRadius = 8;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-const page = figma.root.children.find(p => p.name === 'Components');
+const page = figma.root.children.find(function(p) { return p.name === 'Components'; });
 if (!page) { figma.closePlugin("Error: no page named 'Components' found."); return; }
 figma.currentPage = page;
 
 let X = 100, Y = 100;
-const GAP_X = 48, GAP_ROW = 80;
+const GAP_X = 48;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ROW 1 — Atoms (badges)
+// ROW 1 — Atoms (badges): HORIZONTAL, hug both axes
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── 1. DispositionBadge ───────────────────────────────────────────────────────
-// Code Connect: figma.enum("Disposition", { Friendly, "Assumed Friendly", Suspicious, Hostile, Unknown })
 {
   const defs = [
     { v:'Friendly',         c:C.friendly   },
@@ -142,8 +175,9 @@ const GAP_X = 48, GAP_ROW = 80;
     { v:'Hostile',          c:C.hostile    },
     { v:'Unknown',          c:C.unknown    },
   ];
-  const variants = defs.map(({v, c:col}) => {
-    const k = comp(`Disposition=${v}`, { pl:10, pr:10, pt:5, pb:5, gap:6 });
+  const variants = defs.map(function(d) {
+    var v = d.v, col = d.c;
+    const k = comp('Disposition=' + v, { pl:10, pr:10, pt:5, pb:5, gap:6 });
     k.fills = [{ type:'SOLID', color:C.card }, { type:'SOLID', color:col, opacity:0.12 }];
     k.appendChild(dot(col));
     k.appendChild(txt(v, { size:12, name:'Label' }));
@@ -157,18 +191,18 @@ const GAP_X = 48, GAP_ROW = 80;
 }
 
 // ── 2. TemplateBadge ──────────────────────────────────────────────────────────
-// Code Connect: figma.enum("Template", { Asset, Track }) + figma.string("PlatformType")
 {
   const defs = [
     { v:'Asset', col:C.assumed, label:'ASSET', platform:'USV' },
     { v:'Track', col:C.accent,  label:'TRACK', platform:null  },
   ];
-  const variants = defs.map(({v, col, label, platform}) => {
-    const k = comp(`Template=${v}`, { pl:8, pr:8, pt:4, pb:4, gap:6, bg:null });
+  const variants = defs.map(function(d) {
+    var v = d.v, col = d.col, label = d.label, platform = d.platform;
+    const k = comp('Template=' + v, { pl:8, pr:8, pt:4, pb:4, gap:6, bg:null });
     k.fills = [];
-    k.strokes = stroke(col, 0.6);
+    k.strokes = strk(col, 0.6);
     k.strokeWeight = 1;
-    k.strokeAlign = 'INSIDE';
+    k.strokeAlign  = 'INSIDE';
     k.appendChild(txt(label, { size:10, color:col, style:'Semi Bold', name:'Label' }));
     if (platform) k.appendChild(txt(platform, { size:10, color:C.dim, name:'PlatformType' }));
     page.appendChild(k);
@@ -181,16 +215,15 @@ const GAP_X = 48, GAP_ROW = 80;
 }
 
 // ── 3. LiveBadge ─────────────────────────────────────────────────────────────
-// Code Connect: figma.boolean("IsLive") → variant "IsLive=True|False"
 {
   const defs = [
     { v:'True',  col:C.friendly, label:'Live',    tc:C.ink },
     { v:'False', col:C.dim,      label:'Expired', tc:C.dim },
   ];
-  const variants = defs.map(({v, col, label, tc}) => {
-    const k = comp(`IsLive=${v}`, { pl:8, pr:8, pt:4, pb:4, gap:5 });
-    k.appendChild(dot(col, 5));
-    k.appendChild(txt(label, { size:11, color:tc, name:'Label' }));
+  const variants = defs.map(function(d) {
+    const k = comp('IsLive=' + d.v, { pl:8, pr:8, pt:4, pb:4, gap:5 });
+    k.appendChild(dot(d.col, 5));
+    k.appendChild(txt(d.label, { size:11, color:d.tc, name:'Label' }));
     page.appendChild(k);
     return k;
   });
@@ -201,7 +234,6 @@ const GAP_X = 48, GAP_ROW = 80;
 }
 
 // ── 4. TaskStatusBadge ────────────────────────────────────────────────────────
-// Code Connect: figma.enum("Status", { Executing, Done, Failed, Pending })
 {
   const defs = [
     { v:'Executing', col:C.executing  },
@@ -209,11 +241,11 @@ const GAP_X = 48, GAP_ROW = 80;
     { v:'Failed',    col:C.doneNotOk },
     { v:'Pending',   col:C.pending   },
   ];
-  const variants = defs.map(({v, col}) => {
-    const k = comp(`Status=${v}`, { pl:10, pr:10, pt:4, pb:4, gap:6 });
-    k.fills = [{ type:'SOLID', color:C.card }, { type:'SOLID', color:col, opacity:0.15 }];
-    k.appendChild(dot(col, 5));
-    k.appendChild(txt(v, { size:11, name:'Label' }));
+  const variants = defs.map(function(d) {
+    const k = comp('Status=' + d.v, { pl:10, pr:10, pt:4, pb:4, gap:6 });
+    k.fills = [{ type:'SOLID', color:C.card }, { type:'SOLID', color:d.col, opacity:0.15 }];
+    k.appendChild(dot(d.col, 5));
+    k.appendChild(txt(d.v, { size:11, name:'Label' }));
     page.appendChild(k);
     return k;
   });
@@ -224,31 +256,35 @@ const GAP_X = 48, GAP_ROW = 80;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ROW 2 — Molecules
+// ROW 2 — Molecules: VERTICAL, hug height (AUTO), fixed width (FIXED)
+//          Sub-rows use layoutAlign=STRETCH so width fills and Figma reports
+//          "Fill container" in dev inspect rather than a hard-coded value.
 // ═══════════════════════════════════════════════════════════════════════════════
 X = 100; Y += 200;
 
 // ── 5. EntityRow ──────────────────────────────────────────────────────────────
-// Code Connect: figma.string("Name") + nested badge instances
-// Text layers: Name, EntityId, Template, Live, Disposition, Latitude, Longitude, DataType, UpdatedAt
 {
   const k = figma.createComponent();
   k.name = 'EntityRow';
-  al(k, { dir:'VERTICAL', gap:8, pl:12, pr:12, pt:12, pb:12, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+  // VERTICAL: primary=height (AUTO/hug), counter=width (FIXED at 280)
+  al(k, { dir:'VERTICAL', gap:8, pl:12, pr:12, pt:12, pb:12, crossAlign:'MIN',
+          mainSizing:'AUTO', crossSizing:'FIXED' });
   k.cornerRadius = 6;
   k.fills = solid(C.card);
-  k.resize(280, 104);
+  k.resize(280, 10); // width locked; height hugs children
 
-  const nameRow = frame({ mainAlign:'SPACE_BETWEEN' });
-  nameRow.layoutAlign = 'STRETCH';
+  // Name + ID row — stretches to fill component width
+  const nameRow = stretchRow({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', gap:8 });
   nameRow.appendChild(txt('Simulated Asset', { size:13, style:'Semi Bold', name:'Name' }));
   nameRow.appendChild(txt('asset-01', { size:11, color:C.dim, name:'EntityId' }));
 
+  // Badge row — hugs its content
   const badgeRow = frame({ gap:6 });
   badgeRow.appendChild(txt('ASSET',    { size:10, color:C.assumed,  name:'Template'    }));
   badgeRow.appendChild(txt('Live',     { size:10, color:C.friendly, name:'Live'        }));
   badgeRow.appendChild(txt('Friendly', { size:10, color:C.friendly, name:'Disposition' }));
 
+  // Meta row — hugs its content
   const metaRow = frame({ gap:12 });
   metaRow.appendChild(txt('1.0000°N',        { size:11, color:C.dim,   name:'Latitude'  }));
   metaRow.appendChild(txt('1.0000°E',        { size:11, color:C.dim,   name:'Longitude' }));
@@ -263,8 +299,6 @@ X = 100; Y += 200;
 }
 
 // ── 6. TaskRow ────────────────────────────────────────────────────────────────
-// Code Connect: figma.enum("Status", { Executing, Done, Failed, Pending })
-// Text layers: StatusLabel, TaskName, TaskId, Assignee, Target, Description, Author
 {
   const defs = [
     { v:'Executing', col:C.executing  },
@@ -272,20 +306,24 @@ X = 100; Y += 200;
     { v:'Failed',    col:C.doneNotOk },
     { v:'Pending',   col:C.pending   },
   ];
-  const variants = defs.map(({v, col}) => {
+  const variants = defs.map(function(d) {
+    var v = d.v, col = d.col;
     const k = figma.createComponent();
-    k.name = `Status=${v}`;
-    al(k, { dir:'VERTICAL', gap:5, pl:12, pr:12, pt:12, pb:12, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+    k.name = 'Status=' + v;
+    al(k, { dir:'VERTICAL', gap:5, pl:12, pr:12, pt:12, pb:12, crossAlign:'MIN',
+            mainSizing:'AUTO', crossSizing:'FIXED' });
     k.cornerRadius = 6;
     k.fills = solid(C.card);
-    k.resize(280, 96);
+    k.resize(280, 10); // width locked; height hugs children
 
-    const row1 = frame({ gap:8 });
-    row1.appendChild(txt(v, { size:10, color:col, name:'StatusLabel' }));
+    // Status + name row — stretches to fill width
+    const row1 = stretchRow({ gap:8, crossAlign:'CENTER' });
+    row1.appendChild(txt(v,             { size:10, color:col,     name:'StatusLabel' }));
     row1.appendChild(txt('Investigate', { size:12, style:'Semi Bold', name:'TaskName' }));
-    row1.appendChild(txt('c7d8e9f0', { size:10, color:C.ghost, name:'TaskId' }));
+    row1.appendChild(txt('c7d8e9f0',    { size:10, color:C.ghost, name:'TaskId'      }));
 
-    const row2 = frame({ gap:6 });
+    // Assignee → target row — hugs content
+    const row2 = frame({ gap:6, crossAlign:'CENTER' });
     row2.appendChild(txt('asset-01',  { size:11, color:C.dim,   name:'Assignee' }));
     row2.appendChild(txt('→',         { size:11, color:C.ghost  }));
     row2.appendChild(txt('track-abc', { size:11, color:C.dim,   name:'Target'   }));
@@ -304,34 +342,35 @@ X = 100; Y += 200;
 }
 
 // ── 7. ProximityAlert ────────────────────────────────────────────────────────
-// Code Connect: figma.boolean("WithinRange") → variant "WithinRange=True|False"
-// Text layers: AlertLabel, AssetName, TrackName, Distance, Threshold
 {
   const defs = [
     { v:'True',  alertCol:C.suspicious, dist:'2.93 mi', bgO:0.10 },
     { v:'False', alertCol:C.dim,        dist:'7.50 mi', bgO:0.05 },
   ];
-  const variants = defs.map(({v, alertCol, dist, bgO}) => {
+  const variants = defs.map(function(d) {
+    var v = d.v, alertCol = d.alertCol, dist = d.dist, bgO = d.bgO;
     const k = figma.createComponent();
-    k.name = `WithinRange=${v}`;
-    al(k, { dir:'VERTICAL', gap:4, pl:12, pr:12, pt:10, pb:10, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+    k.name = 'WithinRange=' + v;
+    al(k, { dir:'VERTICAL', gap:4, pl:12, pr:12, pt:10, pb:10, crossAlign:'MIN',
+            mainSizing:'AUTO', crossSizing:'FIXED' });
     k.cornerRadius = 6;
     k.fills  = [{ type:'SOLID', color:alertCol, opacity:bgO }];
-    k.strokes = stroke(alertCol, 0.35);
+    k.strokes = strk(alertCol, 0.35);
     k.strokeWeight = 1;
-    k.strokeAlign = 'INSIDE';
-    k.resize(280, 88);
+    k.strokeAlign  = 'INSIDE';
+    k.resize(280, 10); // width locked; height hugs
 
-    k.appendChild(txt(v==='True' ? '⚠ PROXIMITY ALERT' : 'No Alert', { size:10, style:'Semi Bold', color:alertCol, name:'AlertLabel' }));
+    k.appendChild(txt(v === 'True' ? '⚠ PROXIMITY ALERT' : 'No Alert',
+                       { size:10, style:'Semi Bold', color:alertCol, name:'AlertLabel' }));
 
-    const nameRow = frame({ gap:4 });
+    const nameRow = frame({ gap:4, crossAlign:'CENTER' });
     nameRow.appendChild(txt('asset-01',  { size:12, name:'AssetName' }));
     nameRow.appendChild(txt('→',         { size:12, color:C.dim }));
     nameRow.appendChild(txt('track-abc', { size:12, name:'TrackName' }));
     k.appendChild(nameRow);
 
-    k.appendChild(txt(dist,           { size:18, style:'Semi Bold', color:alertCol, name:'Distance'  }));
-    k.appendChild(txt('Threshold: 5 mi', { size:10, color:C.dim,   name:'Threshold' }));
+    k.appendChild(txt(dist,              { size:18, style:'Semi Bold', color:alertCol, name:'Distance'  }));
+    k.appendChild(txt('Threshold: 5 mi', { size:10, color:C.dim,                       name:'Threshold' }));
     page.appendChild(k);
     return k;
   });
@@ -342,23 +381,23 @@ X = 100; Y += 200;
 }
 
 // ── 8. MetricCard ────────────────────────────────────────────────────────────
-// Code Connect: figma.boolean("Highlight") → variant "Highlight=True|False"
-// Text layers: Label, Value, Sublabel
 {
   const defs = [
-    { v:'False', valCol:C.ink,   stroked:false },
+    { v:'False', valCol:C.ink,    stroked:false },
     { v:'True',  valCol:C.accent, stroked:true  },
   ];
-  const variants = defs.map(({v, valCol, stroked}) => {
+  const variants = defs.map(function(d) {
+    var v = d.v, valCol = d.valCol, stroked = d.stroked;
     const k = figma.createComponent();
-    k.name = `Highlight=${v}`;
-    al(k, { dir:'VERTICAL', gap:2, pl:16, pr:16, pt:14, pb:14, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+    k.name = 'Highlight=' + v;
+    al(k, { dir:'VERTICAL', gap:2, pl:16, pr:16, pt:14, pb:14, crossAlign:'MIN',
+            mainSizing:'AUTO', crossSizing:'FIXED' });
     k.cornerRadius = 6;
     k.fills = solid(C.card);
-    k.resize(160, 84);
-    if (stroked) { k.strokes = stroke(C.accent, 0.3); k.strokeWeight = 1; k.strokeAlign = 'INSIDE'; }
+    k.resize(160, 10); // width locked; height hugs
+    if (stroked) { k.strokes = strk(C.accent, 0.3); k.strokeWeight = 1; k.strokeAlign = 'INSIDE'; }
     k.appendChild(txt('Label',    { size:11, color:C.dim,   name:'Label'   }));
-    k.appendChild(txt('42',       { size:24, style:'Semi Bold', color:valCol, name:'Value'  }));
+    k.appendChild(txt('42',       { size:24, style:'Semi Bold', color:valCol, name:'Value'   }));
     k.appendChild(txt('Sublabel', { size:10, color:C.ghost, name:'Sublabel' }));
     page.appendChild(k);
     return k;
@@ -370,39 +409,37 @@ X = 100; Y += 200;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ROW 3 — Organisms
+// ROW 3 — Organisms: VERTICAL, fixed height + fixed width
+//          Header: layoutAlign=STRETCH (fill width) + hug height
+//          Body:   layoutAlign=STRETCH + layoutGrow=1 (fill remaining height)
+//          This makes Figma correctly report "Fill container" in dev inspect.
 // ═══════════════════════════════════════════════════════════════════════════════
 X = 100; Y += 300;
 
 // ── 9. EntityPanel ───────────────────────────────────────────────────────────
-// Code Connect: figma.enum("Filter", { All, Assets, Tracks })
 {
   const defs = [
     { v:'All',    label:'ENTITIES' },
     { v:'Assets', label:'ENTITIES — Assets' },
     { v:'Tracks', label:'ENTITIES — Tracks' },
   ];
-  const variants = defs.map(({v, label}) => {
+  const variants = defs.map(function(d) {
+    var v = d.v, label = d.label;
     const k = figma.createComponent();
-    k.name = `Filter=${v}`;
-    al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+    k.name = 'Filter=' + v;
+    al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN',
+            mainSizing:'FIXED', crossSizing:'FIXED' });
     k.fills = solid(C.panel);
     k.resize(300, 480);
     k.clipsContent = true;
 
-    const hdr = frame({ gap:8, pl:12, pr:12, pt:10, pb:10, bg:C.panel });
-    hdr.resize(300, 40);
-    hdr.primaryAxisSizingMode = 'FIXED';
-    hdr.counterAxisSizingMode = 'FIXED';
-    hdr.strokes = stroke(C.border);
-    hdr.strokeAlign = 'OUTSIDE';
-    hdr.strokeWeight = 1;
+    // Header: stretch fills width, hug height
+    const hdr = stretchRow({ gap:8, pl:12, pr:12, pt:10, pb:10, bg:C.panel, crossAlign:'CENTER' });
+    hdr.strokes = strk(C.border); hdr.strokeAlign = 'OUTSIDE'; hdr.strokeWeight = 1;
     hdr.appendChild(txt(label, { size:10, style:'Semi Bold', color:C.dim }));
 
-    const body = frame({ dir:'VERTICAL', gap:4, pl:8, pr:8, pt:8, pb:8, bg:C.panel });
-    body.resize(300, 440);
-    body.primaryAxisSizingMode = 'FIXED';
-    body.counterAxisSizingMode = 'FIXED';
+    // Body: stretch fills width, grow fills remaining height
+    const body = stretchGrowBody({ dir:'VERTICAL', gap:4, pl:8, pr:8, pt:8, pb:8, bg:C.panel });
     body.appendChild(txt('Entity rows render here', { size:11, color:C.ghost }));
 
     k.appendChild(hdr);
@@ -417,26 +454,20 @@ X = 100; Y += 300;
 }
 
 // ── 10. TaskPanel ─────────────────────────────────────────────────────────────
-// Code Connect: no props (static list)
 {
   const k = figma.createComponent();
   k.name = 'TaskPanel';
-  al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+  al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN',
+          mainSizing:'FIXED', crossSizing:'FIXED' });
   k.fills = solid(C.panel);
   k.resize(300, 480);
   k.clipsContent = true;
 
-  const hdr = frame({ gap:8, pl:12, pr:12, pt:10, pb:10, bg:C.panel });
-  hdr.resize(300, 40);
-  hdr.primaryAxisSizingMode = 'FIXED';
-  hdr.counterAxisSizingMode = 'FIXED';
-  hdr.strokes = stroke(C.border); hdr.strokeAlign = 'OUTSIDE'; hdr.strokeWeight = 1;
+  const hdr = stretchRow({ gap:8, pl:12, pr:12, pt:10, pb:10, bg:C.panel, crossAlign:'CENTER' });
+  hdr.strokes = strk(C.border); hdr.strokeAlign = 'OUTSIDE'; hdr.strokeWeight = 1;
   hdr.appendChild(txt('ACTIVE TASKS', { size:10, style:'Semi Bold', color:C.dim }));
 
-  const body = frame({ dir:'VERTICAL', gap:4, pl:8, pr:8, pt:8, pb:8, bg:C.panel });
-  body.resize(300, 440);
-  body.primaryAxisSizingMode = 'FIXED';
-  body.counterAxisSizingMode = 'FIXED';
+  const body = stretchGrowBody({ dir:'VERTICAL', gap:4, pl:8, pr:8, pt:8, pb:8, bg:C.panel });
   body.appendChild(txt('Task rows render here', { size:11, color:C.ghost }));
 
   k.appendChild(hdr);
@@ -446,8 +477,6 @@ X = 100; Y += 300;
 }
 
 // ── 11. SystemLogEntry ────────────────────────────────────────────────────────
-// Code Connect: figma.enum("Level", { INFO, WARN, ERROR }) + figma.string("Logger")
-// Text layers: Timestamp, LevelInitial, Logger, Message
 {
   const levelDefs = [
     { level:'INFO',  col:C.ink,        letter:'I' },
@@ -460,16 +489,21 @@ X = 100; Y += 300;
     { logger:'SIMTRACK', col:C.accent   },
   ];
   const variants = [];
-  for (const {level, col:lc, letter} of levelDefs) {
-    for (const {logger, col:logCol} of loggerDefs) {
+  for (var li = 0; li < levelDefs.length; li++) {
+    var ld = levelDefs[li];
+    for (var lgi = 0; lgi < loggerDefs.length; lgi++) {
+      var lgd = loggerDefs[lgi];
       const k = figma.createComponent();
-      k.name = `Level=${level}, Logger=${logger}`;
-      al(k, { gap:10, pl:12, pr:12, pt:6, pb:6, mainSizing:'FIXED', crossSizing:'AUTO' });
+      k.name = 'Level=' + ld.level + ', Logger=' + lgd.logger;
+      // HORIZONTAL: primary=width (FIXED at 560), counter=height (AUTO/hug)
+      al(k, { gap:10, pl:12, pr:12, pt:6, pb:6,
+              mainSizing:'FIXED', crossSizing:'AUTO', crossAlign:'CENTER' });
       k.fills = solid(C.card);
-      k.resize(560, 28);
-      k.appendChild(txt('12:34:56.789', { size:11, color:C.ghost, name:'Timestamp',    family:MONO.family, style:MONO.style }));
-      k.appendChild(txt(letter,         { size:11, color:lc,      name:'LevelInitial', family:MONO.family, style:MONO.style }));
-      k.appendChild(txt(logger,         { size:11, color:logCol,  name:'Logger',       family:MONO.family, style:MONO.style }));
+      k.resize(560, 10); // width fixed; height hugs text
+      k.appendChild(txt('12:34:56.789', { size:11, color:C.ghost,  name:'Timestamp',    family:MONO.family, style:MONO.style }));
+      k.appendChild(txt(ld.letter,      { size:11, color:ld.col,   name:'LevelInitial', family:MONO.family, style:MONO.style }));
+      k.appendChild(txt(lgd.logger,     { size:11, color:lgd.col,  name:'Logger',       family:MONO.family, style:MONO.style }));
+      // Message fills remaining width using layoutGrow
       k.appendChild(txt('Entity published successfully', { size:11, color:C.ink, name:'Message', family:MONO.family, style:MONO.style, grow:true }));
       page.appendChild(k);
       variants.push(k);
@@ -482,26 +516,20 @@ X = 100; Y += 300;
 }
 
 // ── 12. SystemLog ─────────────────────────────────────────────────────────────
-// Code Connect: no props (static list)
 {
   const k = figma.createComponent();
   k.name = 'SystemLog';
-  al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+  al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN',
+          mainSizing:'FIXED', crossSizing:'FIXED' });
   k.fills = solid(C.panel);
   k.resize(620, 480);
   k.clipsContent = true;
 
-  const hdr = frame({ gap:8, pl:12, pr:12, pt:10, pb:10, bg:C.panel });
-  hdr.resize(620, 40);
-  hdr.primaryAxisSizingMode = 'FIXED';
-  hdr.counterAxisSizingMode = 'FIXED';
-  hdr.strokes = stroke(C.border); hdr.strokeAlign = 'OUTSIDE'; hdr.strokeWeight = 1;
+  const hdr = stretchRow({ gap:8, pl:12, pr:12, pt:10, pb:10, bg:C.panel, crossAlign:'CENTER' });
+  hdr.strokes = strk(C.border); hdr.strokeAlign = 'OUTSIDE'; hdr.strokeWeight = 1;
   hdr.appendChild(txt('SYSTEM LOG', { size:10, style:'Semi Bold', color:C.dim }));
 
-  const body = frame({ dir:'VERTICAL', gap:0, pl:0, pr:0, pt:4, pb:4, bg:C.canvas });
-  body.resize(620, 440);
-  body.primaryAxisSizingMode = 'FIXED';
-  body.counterAxisSizingMode = 'FIXED';
+  const body = stretchGrowBody({ dir:'VERTICAL', gap:0, pl:0, pr:0, pt:4, pb:4, bg:C.canvas });
   body.appendChild(txt('Log entries render here', { size:11, color:C.ghost, family:MONO.family, style:MONO.style }));
 
   k.appendChild(hdr);
@@ -511,77 +539,80 @@ X = 100; Y += 300;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ROW 4 — Template
+// ROW 4 — Template: 1440×900, all sub-frames use STRETCH + layoutGrow
 // ═══════════════════════════════════════════════════════════════════════════════
 X = 100; Y += 620;
 
 // ── 13. DashboardLayout ──────────────────────────────────────────────────────
-// Code Connect: no props (full-page template)
 {
   const k = figma.createComponent();
   k.name = 'DashboardLayout';
-  al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN', mainSizing:'FIXED', crossSizing:'FIXED' });
+  al(k, { dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, crossAlign:'MIN',
+          mainSizing:'FIXED', crossSizing:'FIXED' });
   k.fills = solid(C.canvas);
   k.resize(1440, 900);
   k.clipsContent = true;
 
-  // Header bar (48px)
-  const hdrBar = frame({ gap:12, pl:16, pr:16, pt:0, pb:0, bg:C.panel, mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER' });
-  hdrBar.resize(1440, 48);
-  hdrBar.primaryAxisSizingMode = 'FIXED';
-  hdrBar.counterAxisSizingMode = 'FIXED';
-  hdrBar.strokes = stroke(C.border); hdrBar.strokeAlign = 'OUTSIDE'; hdrBar.strokeWeight = 1;
+  // Header bar — stretch fills width, fixed 48px height
+  const hdrBar = stretchRow({
+    gap:12, pl:16, pr:16, pt:0, pb:0,
+    bg:C.panel, mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER',
+    crossSizing:'FIXED',
+  });
+  hdrBar.resize(hdrBar.width, 48);
+  hdrBar.strokes = strk(C.border); hdrBar.strokeAlign = 'OUTSIDE'; hdrBar.strokeWeight = 1;
   hdrBar.appendChild(txt('EARS — Entity Auto Reconnaissance System', { size:13, style:'Semi Bold' }));
-
   const livePill = frame({ gap:5, pl:8, pr:8, pt:4, pb:4, bg:C.card, radius:4 });
   livePill.appendChild(dot(C.friendly, 5));
   livePill.appendChild(txt('Live', { size:11, color:C.friendly }));
   hdrBar.appendChild(livePill);
 
-  // Metrics strip (80px)
-  const metrics = frame({ gap:12, pl:16, pr:16, pt:12, pb:12, bg:C.panel, crossAlign:'CENTER', name:'metrics' });
-  metrics.resize(1440, 80);
-  metrics.primaryAxisSizingMode = 'FIXED';
-  metrics.counterAxisSizingMode = 'FIXED';
+  // Metrics strip — stretch fills width, fixed 80px height
+  const metricsStrip = stretchRow({
+    gap:12, pl:16, pr:16, pt:12, pb:12,
+    bg:C.panel, crossAlign:'CENTER', crossSizing:'FIXED', name:'metrics',
+  });
+  metricsStrip.resize(metricsStrip.width, 80);
   const metDefs = [
     { label:'Assets',             value:'2',    sub:'TEMPLATE_ASSET'   },
     { label:'Tracks',             value:'1',    sub:'TEMPLATE_TRACK'   },
     { label:'Active Tasks',       value:'1',    sub:'STATUS_EXECUTING' },
     { label:'Distance Threshold', value:'5 mi', sub:'Proximity trigger' },
   ];
-  for (const {label, value, sub} of metDefs) {
+  for (var mi = 0; mi < metDefs.length; mi++) {
+    var md = metDefs[mi];
+    // Each card: layoutGrow=1 fills equal width; layoutAlign=STRETCH fills height
     const card = frame({ dir:'VERTICAL', gap:2, pl:16, pr:16, pt:10, pb:10, bg:C.card, radius:6, crossAlign:'MIN' });
-    card.resize(336, 56);
-    card.primaryAxisSizingMode = 'FIXED';
-    card.counterAxisSizingMode = 'FIXED';
-    card.appendChild(txt(label, { size:10, color:C.dim   }));
-    card.appendChild(txt(value, { size:20, style:'Semi Bold' }));
-    card.appendChild(txt(sub,   { size:9,  color:C.ghost }));
-    metrics.appendChild(card);
+    card.layoutGrow  = 1;         // equal width fill
+    card.layoutAlign = 'STRETCH'; // fill strip height
+    card.appendChild(txt(md.label, { size:10, color:C.dim   }));
+    card.appendChild(txt(md.value, { size:20, style:'Semi Bold' }));
+    card.appendChild(txt(md.sub,   { size:9,  color:C.ghost }));
+    metricsStrip.appendChild(card);
   }
 
-  // 3-column main area (772px)
-  const mainArea = frame({ bg:C.canvas, name:'main' });
-  mainArea.resize(1440, 772);
-  mainArea.primaryAxisSizingMode = 'FIXED';
-  mainArea.counterAxisSizingMode = 'FIXED';
+  // Main 3-column area — stretch fills width, grow fills remaining height
+  const mainArea = stretchGrowBody({ bg:C.canvas, name:'main' });
 
-  const leftCol = frame({ dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, bg:C.panel, name:'EntityPanel' });
-  leftCol.resize(300, 772);
-  leftCol.primaryAxisSizingMode = 'FIXED';
-  leftCol.counterAxisSizingMode = 'FIXED';
+  // Left col: fixed 300px width, stretch fills height
+  const leftCol = frame({ dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, bg:C.panel,
+                           crossSizing:'FIXED', name:'EntityPanel' });
+  leftCol.resize(300, 10);
+  leftCol.layoutAlign = 'STRETCH';
   leftCol.appendChild(txt('EntityPanel', { size:11, color:C.dim }));
 
-  const centerCol = frame({ dir:'VERTICAL', gap:12, pl:12, pr:12, pt:12, pb:12, bg:C.canvas, name:'center' });
-  centerCol.resize(840, 772);
-  centerCol.primaryAxisSizingMode = 'FIXED';
-  centerCol.counterAxisSizingMode = 'FIXED';
+  // Center col: fill remaining width (layoutGrow=1), stretch fills height
+  const centerCol = frame({ dir:'VERTICAL', gap:12, pl:12, pr:12, pt:12, pb:12,
+                              bg:C.canvas, name:'center' });
+  centerCol.layoutGrow  = 1;
+  centerCol.layoutAlign = 'STRETCH';
   centerCol.appendChild(txt('ProximityAlert + SystemLog', { size:11, color:C.dim }));
 
-  const rightCol = frame({ dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, bg:C.panel, name:'TaskPanel' });
-  rightCol.resize(300, 772);
-  rightCol.primaryAxisSizingMode = 'FIXED';
-  rightCol.counterAxisSizingMode = 'FIXED';
+  // Right col: fixed 300px width, stretch fills height
+  const rightCol = frame({ dir:'VERTICAL', gap:0, pl:0, pr:0, pt:0, pb:0, bg:C.panel,
+                             crossSizing:'FIXED', name:'TaskPanel' });
+  rightCol.resize(300, 10);
+  rightCol.layoutAlign = 'STRETCH';
   rightCol.appendChild(txt('TaskPanel', { size:11, color:C.dim }));
 
   mainArea.appendChild(leftCol);
@@ -589,7 +620,7 @@ X = 100; Y += 620;
   mainArea.appendChild(rightCol);
 
   k.appendChild(hdrBar);
-  k.appendChild(metrics);
+  k.appendChild(metricsStrip);
   k.appendChild(mainArea);
   page.appendChild(k);
   k.x = X; k.y = Y;
