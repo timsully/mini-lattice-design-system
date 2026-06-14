@@ -91,7 +91,7 @@ function comp(name, opts={}) {
   const c = figma.createComponent();
   c.name = name;
   al(c, opts);
-  c.cornerRadius = opts.radius ?? 4;
+  c.cornerRadius = opts.radius !== undefined ? opts.radius : 4;
   c.fills = opts.bg !== undefined ? (opts.bg ? solid(opts.bg) : []) : solid(C.card);
   return c;
 }
@@ -101,7 +101,7 @@ function frame(opts={}) {
   const f = figma.createFrame();
   if (opts.name) f.name = opts.name;
   al(f, opts);
-  f.cornerRadius = opts.radius ?? 0;
+  f.cornerRadius = opts.radius !== undefined ? opts.radius : 0;
   f.fills = opts.bg ? solid(opts.bg) : [];
   if (opts.clip) f.clipsContent = true;
   return f;
