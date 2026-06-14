@@ -107,11 +107,17 @@ function frame(opts={}) {
   return f;
 }
 
-// Finalise a component set after combineAsVariants
+// Finalise a component set after combineAsVariants — adds auto layout + padding
 function styleSet(set, spacing=12) {
-  set.fills = solid(C.elevated);
-  set.paddingLeft = set.paddingRight = set.paddingTop = set.paddingBottom = 20;
+  set.layoutMode = 'HORIZONTAL';
+  set.layoutWrap = 'WRAP';
+  set.primaryAxisSizingMode = 'AUTO';
+  set.counterAxisSizingMode = 'AUTO';
   set.itemSpacing = spacing;
+  set.counterAxisSpacing = spacing;
+  set.paddingLeft = set.paddingRight = set.paddingTop = set.paddingBottom = 20;
+  set.fills = solid(C.elevated);
+  set.cornerRadius = 8;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
