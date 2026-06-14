@@ -208,6 +208,24 @@ The plugin (`figma-plugin/code.js`) places all 13 components in a 4-row grid:
 
 Every component set uses the exact variant property names that the Code Connect files in `figma/` expect — `figma.enum("Disposition", ...)`, `figma.string("Logger")`, etc. — so no manual renaming is needed before publishing.
 
+### Variable collection
+
+The plugin also creates a **"Lattice Design System"** variable collection (in a single "Dark" mode) automatically sourced from `app/globals.css` and `lib/tokens.ts`:
+
+| Group | Variables | Source |
+|---|---|---|
+| `Color/Background/*` | Canvas, Panel, Card, Elevated | `@theme --color-*` in globals.css |
+| `Color/Border` | Default border color | `--color-border` |
+| `Color/Text/*` | Ink, Dim, Ghost | `--color-ink/dim/ghost` |
+| `Color/Disposition/*` | Friendly, Assumed, Suspicious, Hostile, Unknown | `DISPOSITION_COLORS` in tokens.ts |
+| `Color/Status/*` | Executing, Done OK, Done Not OK, Pending | `TASK_STATUS_COLORS` in tokens.ts |
+| `Color/Accent` | Amber accent / highlight | `--color-accent` |
+| `Spacing/*` | 1, 4, 6, 8, 10, 12, 16, 48 (px) | Tailwind values used in component spacing |
+| `Radius/*` | SM=2px, Default=4px | `rounded-sm` / `rounded` Tailwind values |
+| `Config/*` | Distance threshold, refresh interval, expiry, cache capacity | Constants in `lib/tokens.ts` |
+
+After running the plugin, open **Assets panel → Local variables** to see the full collection. Apply variables to component fills/strokes in the Figma inspector.
+
 ---
 
 ## Step 9: Build the Figma Design System Tokens

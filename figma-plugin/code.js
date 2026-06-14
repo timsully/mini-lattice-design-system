@@ -131,6 +131,87 @@ const page = figma.root.children.find(function(p){ return p.name === 'Components
 if (!page) { figma.closePlugin("No page named 'Components' found."); return; }
 figma.currentPage = page;
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// VARIABLE COLLECTION — extracted from app/globals.css @theme + lib/tokens.ts
+//
+// Groups:
+//   Color/Background/*  → surface layers (canvas, panel, card, elevated)
+//   Color/Border        → border color
+//   Color/Text/*        → ink, dim, ghost
+//   Color/Disposition/* → semantic disposition colors (5 values)
+//   Color/Status/*      → semantic task status colors (4 values)
+//   Color/Accent        → amber accent / CTA
+//   Spacing/*           → Tailwind gap/padding values used in components (px)
+//   Radius/*            → border-radius values (rounded-sm=2, rounded=4)
+//   Config/*            → business logic constants from lib/tokens.ts
+// ═══════════════════════════════════════════════════════════════════════════════
+if (figma.variables) {
+  var col = figma.variables.createVariableCollection('Lattice Design System');
+  var modeId = col.modes[0].modeId;
+  col.renameMode(modeId, 'Dark');
+
+  function colorVar(name, value) {
+    var v = figma.variables.createVariable(name, col, 'COLOR');
+    v.setValueForMode(modeId, value);
+    return v;
+  }
+  function numVar(name, value) {
+    var v = figma.variables.createVariable(name, col, 'FLOAT');
+    v.setValueForMode(modeId, value);
+    return v;
+  }
+
+  // Background layers (--color-canvas through --color-elevated)
+  colorVar('Color/Background/Canvas',   C.canvas);
+  colorVar('Color/Background/Panel',    C.panel);
+  colorVar('Color/Background/Card',     C.card);
+  colorVar('Color/Background/Elevated', C.elevated);
+
+  // Border
+  colorVar('Color/Border', C.border);
+
+  // Text hierarchy
+  colorVar('Color/Text/Ink',   C.ink);
+  colorVar('Color/Text/Dim',   C.dim);
+  colorVar('Color/Text/Ghost', C.ghost);
+
+  // Disposition semantic colors (from DISPOSITION_COLORS in lib/tokens.ts)
+  colorVar('Color/Disposition/Friendly',   C.friendly);
+  colorVar('Color/Disposition/Assumed',    C.assumed);
+  colorVar('Color/Disposition/Suspicious', C.suspicious);
+  colorVar('Color/Disposition/Hostile',    C.hostile);
+  colorVar('Color/Disposition/Unknown',    C.unknown);
+
+  // Task status semantic colors (from TASK_STATUS_COLORS in lib/tokens.ts)
+  colorVar('Color/Status/Executing',   C.executing);
+  colorVar('Color/Status/Done OK',     C.doneOk);
+  colorVar('Color/Status/Done Not OK', C.doneNotOk);
+  colorVar('Color/Status/Pending',     C.pending);
+
+  // Accent
+  colorVar('Color/Accent', C.accent);
+
+  // Spacing — Tailwind values used in component padding/gap
+  numVar('Spacing/1px',  1);   // gap-px
+  numVar('Spacing/4',    4);   // gap-1, py-1
+  numVar('Spacing/6',    6);   // gap-1.5, px-1.5
+  numVar('Spacing/8',    8);   // gap-2, p-2
+  numVar('Spacing/10',  10);   // py-2.5
+  numVar('Spacing/12',  12);   // gap-3, px-3, py-3
+  numVar('Spacing/16',  16);   // gap-4, px-4
+  numVar('Spacing/48',  48);   // h-12 (header height)
+
+  // Border radius
+  numVar('Radius/SM',      2);  // rounded-sm
+  numVar('Radius/Default', 4);  // rounded
+
+  // Business logic constants (from lib/tokens.ts)
+  numVar('Config/Distance Threshold Miles',   5);
+  numVar('Config/Refresh Interval Seconds',   5);
+  numVar('Config/Expiry Offset Seconds',     15);
+  numVar('Config/Cache Capacity',           150);
+}
+
 let X = 100, Y = 100;
 const RGAP = 80; // row gap
 
