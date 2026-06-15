@@ -44,7 +44,10 @@ await figma.loadFontAsync({ family:'Inter', style:'Medium'    });
 await figma.loadFontAsync({ family:'Inter', style:'Semi Bold' });
 await figma.loadFontAsync({ family:'Inter', style:'Bold'      });
 let MONO = { family:'Roboto Mono', style:'Regular' };
-try { await figma.loadFontAsync(MONO); } catch(_) { MONO = { family:'Inter', style:'Regular' }; }
+try {
+  await figma.loadFontAsync({ family:'Roboto Mono', style:'Regular' });
+  await figma.loadFontAsync({ family:'Roboto Mono', style:'Medium'  });
+} catch(_) { MONO = { family:'Inter', style:'Regular' }; }
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 const solid = (c, o) => [{ type:'SOLID', color:c, opacity: o !== undefined ? o : 1 }];
@@ -72,7 +75,7 @@ function txt(chars, o) {
   t.fontSize   = o.size || 12;
   t.fills      = solid(o.color || C.ink);
   if (o.name)  t.name = o.name;
-  if (o.grow)  t.layoutGrow = 1;
+  if (o.grow)  { t.layoutGrow = 1; t.textAutoResize = 'HEIGHT'; }
   if (o.w)   { t.textAutoResize = 'HEIGHT'; t.resize(o.w, t.height); }
   return t;
 }
@@ -93,7 +96,16 @@ function mkComp(name, o) {
   c.cornerRadius = o.radius !== undefined ? o.radius : 4;
   c.fills = o.bg !== undefined ? (o.bg ? solid(o.bg) : []) : solid(C.card);
   if (o.stroke) { c.strokes = border(o.stroke, o.strokeOp || 1); c.strokeWeight = o.sw || 1; c.strokeAlign = o.sa || 'INSIDE'; }
-  if (o.w)      { c.primaryAxisSizingMode = 'FIXED'; c.resize(o.w, 10); }
+  if (o.w) {
+    // VERTICAL layout: primary=HEIGHT, counter=WIDTH — fix counter axis for width
+    // HORIZONTAL layout: primary=WIDTH — fix primary axis
+    if ((o.dir || 'HORIZONTAL') === 'VERTICAL') {
+      c.counterAxisSizingMode = 'FIXED';
+    } else {
+      c.primaryAxisSizingMode = 'FIXED';
+    }
+    c.resize(o.w, 10);
+  }
   return c;
 }
 
@@ -106,7 +118,19 @@ function mkFrame(o) {
   f.cornerRadius = o.radius || 0;
   f.fills = o.bg ? solid(o.bg) : [];
   if (o.clip)    f.clipsContent = true;
-  if (o.stretch) f.layoutAlign = 'STRETCH';
+  if (o.stretch) {
+    f.layoutAlign = 'STRETCH';
+    // Figma Plugin API does NOT auto-fix sizing when layoutAlign='STRETCH' is set.
+    // For stretch to work, the axis being filled must be FIXED (not AUTO/hug).
+    // All stretched frames in this plugin are in VERTICAL parents (filling WIDTH):
+    //   HORIZONTAL child: primary=WIDTH → primaryAxisSizingMode='FIXED'
+    //   VERTICAL child:   counter=WIDTH → counterAxisSizingMode='FIXED'
+    if ((o.dir || 'HORIZONTAL') === 'HORIZONTAL') {
+      f.primaryAxisSizingMode = 'FIXED';
+    } else {
+      f.counterAxisSizingMode = 'FIXED';
+    }
+  }
   if (o.grow)    f.layoutGrow = 1;
   if (o.stroke) { f.strokes = border(o.stroke, o.strokeOp || 1); f.strokeWeight = o.sw || 1; f.strokeAlign = o.sa || 'OUTSIDE'; }
   return f;
@@ -249,8 +273,9 @@ const RGAP = 80; // row gap
 // Asset → bg-assumed/10 text-assumed | Track → bg-suspicious/10 text-suspicious
 {
   const TMPL = [
-    { v:'Asset', bg:C.assumed,    bgO:0.10, color:C.assumed,    label:'ASSET', platform:'USV' },
-    { v:'Track', bg:C.suspicious, bgO:0.10, color:C.suspicious, label:'TRACK', platform:null  },
+    { v:'Asset',        bg:C.assumed,    bgO:0.10, color:C.assumed,    label:'ASSET', platform:null  },
+    { v:'AssetWithUSV', bg:C.assumed,    bgO:0.10, color:C.assumed,    label:'ASSET', platform:'USV' },
+    { v:'Track',        bg:C.suspicious, bgO:0.10, color:C.suspicious, label:'TRACK', platform:null  },
   ];
   const variants = TMPL.map(function(d) {
     const k = mkComp('Template='+d.v, { px:6, py:2, gap:4, radius:4 });
@@ -314,64 +339,93 @@ const RGAP = 80; // row gap
 X = 100; Y += 200;
 
 // ── 5. EntityRow ──────────────────────────────────────────────────────────────
-// Source: flex flex-col gap-2 rounded-sm border border-border bg-card px-3 py-2.5
-// gap-2=8  rounded-sm=2  px-3=12  py-2.5=10  border:1px
-// Width: fill container (no fixed w)  Height: hug content
-//
-// nameRow: flex items-start justify-between gap-2
-//   left:  flex flex-col gap-1 (gap:4)  → name text-sm=14px + id text-[10px]
-//   right: LiveBadge shrink-0
-// badgeRow: flex flex-wrap gap-1.5 (gap:6)
-// metaRow: grid grid-cols-2 gap-x-4 gap-y-0.5 → two vertical columns
+// 3 variants matching Storybook stories: FriendlyAsset, AssumedFriendlyAsset, SuspiciousTrack
+// Content taken directly from MOCK_ENTITIES in lib/mock-data.ts
 {
-  const k = mkComp('EntityRow', { dir:'VERTICAL', gap:8, px:12, py:10, radius:2,
-                                   bg:C.card, stroke:C.border, sw:1, sa:'INSIDE' });
+  var EROWS = [
+    {
+      v:'FriendlyAsset',
+      name:'Simulated Asset asset-01', id:'asset-01',
+      liveC:C.friendly,
+      tmpl:'ASSET', platform:'USV', tmplC:C.assumed,
+      disp:'FRIENDLY', dispC:C.friendly,
+      lat:'1.0000', lng:'1.0000',
+      env:'SURFACE', dataType:'Simulated Asset', updated:'19:17:00',
+    },
+    {
+      v:'AssumedFriendlyAsset',
+      name:'Simulated Asset asset-02', id:'asset-02',
+      liveC:C.friendly,
+      tmpl:'ASSET', platform:'USV', tmplC:C.assumed,
+      disp:'ASSUMED FRIENDLY', dispC:C.assumed,
+      lat:'1.0100', lng:'1.0100',
+      env:'SURFACE', dataType:'Simulated Asset', updated:'19:17:00',
+    },
+    {
+      v:'SuspiciousTrack',
+      name:'Simulated Track', id:'track-f8a3b2c1',
+      liveC:C.friendly,
+      tmpl:'TRACK', platform:null, tmplC:C.suspicious,
+      disp:'SUSPICIOUS', dispC:C.suspicious,
+      lat:'1.0300', lng:'1.0300',
+      env:'SURFACE', dataType:'Simulated Track', updated:'19:17:00',
+    },
+  ];
+  var erVariants = EROWS.map(function(d) {
+    var k = figma.createComponent();
+    k.name = 'Entity='+d.v;
+    al(k, { dir:'VERTICAL', gap:8, px:12, py:10, crossAlign:'MIN' });
+    k.cornerRadius = 2; k.fills = solid(C.card);
+    k.strokes = border(C.border); k.strokeWeight = 1; k.strokeAlign = 'INSIDE';
 
-  // nameRow — fills width, items-start justify-between
-  const nameRow = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'MIN', gap:8, stretch:true });
-  const nameLeft = mkFrame({ dir:'VERTICAL', gap:4 });
-  nameLeft.appendChild(txt('Simulated Asset', { size:14, weight:'Semi Bold', name:'Name' }));
-  nameLeft.appendChild(txt('ID: asset-01', { size:10, color:C.ghost, family:MONO.family, style:MONO.style, name:'EntityId' }));
-  nameRow.appendChild(nameLeft);
-  // Right badge slot placeholder
-  const livePlaceholder = mkFrame({ px:6, py:2, gap:4, radius:4, bg:C.friendly, name:'LiveBadge' });
-  livePlaceholder.fills = [{ type:'SOLID', color:C.friendly, opacity:0.10 }];
-  livePlaceholder.appendChild(dot(C.friendly));
-  livePlaceholder.appendChild(txt('LIVE', { size:10, color:C.friendly, weight:'Semi Bold' }));
-  nameRow.appendChild(livePlaceholder);
+    var nameRow = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'MIN', gap:8, stretch:true });
+    var nameLeft = mkFrame({ dir:'VERTICAL', gap:4 });
+    nameLeft.appendChild(txt(d.name, { size:14, weight:'Semi Bold', name:'Name' }));
+    nameLeft.appendChild(txt('ID: '+d.id, { size:10, color:C.ghost, family:MONO.family, style:MONO.style, name:'EntityId' }));
+    nameRow.appendChild(nameLeft);
+    var liveBadge = mkFrame({ px:6, py:2, gap:4, radius:4 });
+    liveBadge.fills = [{ type:'SOLID', color:d.liveC, opacity:0.10 }];
+    liveBadge.appendChild(dot(d.liveC));
+    liveBadge.appendChild(txt('LIVE', { size:10, color:d.liveC, weight:'Semi Bold' }));
+    nameRow.appendChild(liveBadge);
 
-  // badgeRow — flex-wrap gap-1.5=6
-  const badgeRow = mkFrame({ gap:6, crossAlign:'CENTER' });
-  const tmplBadge = mkFrame({ px:6, py:2, gap:4, radius:4 });
-  tmplBadge.fills = [{ type:'SOLID', color:C.assumed, opacity:0.10 }];
-  tmplBadge.appendChild(txt('ASSET', { size:10, color:C.assumed, weight:'Semi Bold', name:'Template' }));
-  const dispBadge = mkFrame({ px:6, py:2, gap:6, radius:4 });
-  dispBadge.fills = [{ type:'SOLID', color:C.friendly, opacity:0.12 }];
-  dispBadge.appendChild(dot(C.friendly));
-  dispBadge.appendChild(txt('FRIENDLY', { size:10, color:C.friendly, weight:'Semi Bold', name:'Disposition' }));
-  badgeRow.appendChild(tmplBadge);
-  badgeRow.appendChild(dispBadge);
+    var badgeRow = mkFrame({ gap:6, crossAlign:'CENTER' });
+    var tmplBadge = mkFrame({ px:6, py:2, gap:4, radius:4 });
+    tmplBadge.fills = [{ type:'SOLID', color:d.tmplC, opacity:0.10 }];
+    tmplBadge.appendChild(txt(d.tmpl, { size:10, color:d.tmplC, weight:'Semi Bold', name:'Template' }));
+    if (d.platform) tmplBadge.appendChild(txt('· '+d.platform, { size:10, color:d.tmplC }));
+    var dispBadge = mkFrame({ px:6, py:2, gap:6, radius:4 });
+    dispBadge.fills = [{ type:'SOLID', color:d.dispC, opacity:0.12 }];
+    dispBadge.appendChild(dot(d.dispC));
+    dispBadge.appendChild(txt(d.disp, { size:10, color:d.dispC, weight:'Semi Bold', name:'Disposition' }));
+    badgeRow.appendChild(tmplBadge);
+    badgeRow.appendChild(dispBadge);
 
-  // metaRow — grid-cols-2 gap-x-4 gap-y-0.5 → two side-by-side vertical columns
-  const metaRow = mkFrame({ gap:16, crossAlign:'MIN', stretch:true });
-  const metaLeft = mkFrame({ dir:'VERTICAL', gap:2, grow:true });
-  metaLeft.appendChild(txt('LOCATION', { size:10, color:C.ghost, weight:'Medium', name:'LatLabel' }));
-  metaLeft.appendChild(txt('1.0000°, 1.0000°', { size:11, color:C.dim, family:MONO.family, style:MONO.style, name:'Latitude' }));
-  metaLeft.appendChild(txt('DATA TYPE', { size:10, color:C.ghost, weight:'Medium', name:'DataTypeLabel' }));
-  metaLeft.appendChild(txt('Simulated Asset', { size:11, color:C.dim, name:'DataType' }));
-  const metaRight = mkFrame({ dir:'VERTICAL', gap:2, grow:true });
-  metaRight.appendChild(txt('ENVIRONMENT', { size:10, color:C.ghost, weight:'Medium', name:'EnvLabel' }));
-  metaRight.appendChild(txt('SURFACE', { size:11, color:C.dim, name:'Environment' }));
-  metaRight.appendChild(txt('UPDATED', { size:10, color:C.ghost, weight:'Medium', name:'UpdatedLabel' }));
-  metaRight.appendChild(txt('12:34:56', { size:11, color:C.dim, name:'UpdatedAt' }));
-  metaRow.appendChild(metaLeft);
-  metaRow.appendChild(metaRight);
+    var metaRow = mkFrame({ gap:16, crossAlign:'MIN', stretch:true });
+    var metaLeft = mkFrame({ dir:'VERTICAL', gap:2, grow:true });
+    metaLeft.appendChild(txt('LOCATION',      { size:10, color:C.ghost, weight:'Medium' }));
+    metaLeft.appendChild(txt(d.lat+'°, '+d.lng+'°', { size:11, color:C.dim, family:MONO.family, style:MONO.style, name:'Location' }));
+    metaLeft.appendChild(txt('DATA TYPE',     { size:10, color:C.ghost, weight:'Medium' }));
+    metaLeft.appendChild(txt(d.dataType,      { size:11, color:C.dim, name:'DataType' }));
+    var metaRight = mkFrame({ dir:'VERTICAL', gap:2, grow:true });
+    metaRight.appendChild(txt('ENVIRONMENT',  { size:10, color:C.ghost, weight:'Medium' }));
+    metaRight.appendChild(txt(d.env,          { size:11, color:C.dim, name:'Environment' }));
+    metaRight.appendChild(txt('UPDATED',      { size:10, color:C.ghost, weight:'Medium' }));
+    metaRight.appendChild(txt(d.updated,      { size:11, color:C.dim, name:'UpdatedAt' }));
+    metaRow.appendChild(metaLeft);
+    metaRow.appendChild(metaRight);
 
-  k.appendChild(nameRow);
-  k.appendChild(badgeRow);
-  k.appendChild(metaRow);
-  page.appendChild(k);
-  k.x = X; k.y = Y; X += k.width + RGAP;
+    k.appendChild(nameRow);
+    k.appendChild(badgeRow);
+    k.appendChild(metaRow);
+    k.counterAxisSizingMode = 'FIXED';
+    k.primaryAxisSizingMode = 'AUTO';
+    k.resize(280, k.height > 0 ? k.height : 100);
+    page.appendChild(k); return k;
+  });
+  var erSet = figma.combineAsVariants(erVariants, page);
+  erSet.name = 'EntityRow'; styleSet(erSet, 16);
+  erSet.x = X; erSet.y = Y; X += erSet.width + RGAP;
 }
 
 // ── 6. TaskRow ────────────────────────────────────────────────────────────────
@@ -408,18 +462,24 @@ X = 100; Y += 200;
     row1Left.appendChild(sb);
     row1Left.appendChild(txt('Investigate', { size:14, weight:'Semi Bold', name:'TaskName' }));
     row1.appendChild(row1Left);
-    row1.appendChild(txt('c7d8e9f0', { size:10, color:C.ghost, family:MONO.family, style:MONO.style, name:'TaskId' }));
+    row1.appendChild(txt('c7d8e9f0…', { size:10, color:C.ghost, family:MONO.family, style:MONO.style, name:'TaskId' }));
 
-    // row2: gap-1.5=6 items-center
+    // row2: assignee → target  (truncated entity IDs matching truncateId() output)
     const row2 = mkFrame({ gap:6, crossAlign:'CENTER' });
-    row2.appendChild(txt('asset-01',  { size:11, color:C.ghost,    name:'Assignee' }));
-    row2.appendChild(txt('→',         { size:11, color:C.ghost     }));
-    row2.appendChild(txt('track-abc', { size:11, color:C.suspicious, name:'Target' }));
+    row2.appendChild(txt('asset-01',        { size:11, color:C.ghost,      name:'Assignee' }));
+    row2.appendChild(txt('→',          { size:11, color:C.ghost       }));
+    row2.appendChild(txt('track-f8a3b2c1…', { size:11, color:C.suspicious, name:'Target' }));
 
     k.appendChild(row1);
     k.appendChild(row2);
-    k.appendChild(txt('Asset tasked to perform ISR on Track', { size:11, color:C.ghost, name:'Description' }));
-    k.appendChild(txt('Initiated by auto-reconnaissance',      { size:10, color:C.ghost, name:'Author'      }));
+    k.appendChild(txt('Asset asset-01 tasked to perform ISR on Track track-f8a3b2c1-4d5e-6f7a-8b9c-0d1e2f3a4b5c', { size:11, color:C.ghost, name:'Description' }));
+    k.appendChild(txt('Initiated by auto-reconnaissance', { size:10, color:C.ghost, name:'Author' }));
+    // Fix width after children — avoids early resize() locking primary-axis height to 10.
+    // VERTICAL layout: counter=WIDTH, primary=HEIGHT. counterAxisSizingMode='FIXED'
+    // pins width; primaryAxisSizingMode='AUTO' lets height hug content.
+    k.counterAxisSizingMode = 'FIXED';
+    k.primaryAxisSizingMode = 'AUTO';
+    k.resize(280, k.height > 0 ? k.height : 80);
     page.appendChild(k); return k;
   });
   const set = figma.combineAsVariants(variants, page);
@@ -437,12 +497,12 @@ X = 100; Y += 200;
 //   metaRow: flex items-center gap-3=12  text-[10px]
 {
   const PROX = [
-    { v:'True',  alertC:C.suspicious, bgO:0.05, bdO:0.40, distC:C.suspicious, dist:'2.93' },
-    { v:'False', alertC:C.ghost,      bgO:0.00, bdO:0.30, distC:C.dim,        dist:'7.50' },
+    { v:'WithinRange',  alertC:C.suspicious, bgO:0.05, bdO:0.40, distC:C.suspicious, dist:'2.93' },
+    { v:'OutsideRange', alertC:C.ghost,      bgO:0.00, bdO:0.30, distC:C.dim,        dist:'6.50' },
   ];
   const variants = PROX.map(function(d) {
     const k = figma.createComponent();
-    k.name = 'WithinRange='+d.v;
+    k.name = d.v;
     al(k, { gap:12, px:12, py:10, crossAlign:'MIN' });
     k.cornerRadius = 2;
     k.fills  = d.bgO > 0 ? [{ type:'SOLID', color:d.alertC, opacity:d.bgO }] : solid(C.card);
@@ -455,9 +515,9 @@ X = 100; Y += 200;
     const right = mkFrame({ dir:'VERTICAL', gap:2, crossAlign:'MIN' });
 
     const nameRow = mkFrame({ gap:6, crossAlign:'CENTER' });
-    nameRow.appendChild(txt('asset-01',        { size:11, weight:'Semi Bold', name:'AssetName'  }));
-    nameRow.appendChild(txt('within range of', { size:11, color:C.ghost }));
-    nameRow.appendChild(txt('track-abc',       { size:11, weight:'Semi Bold', color:C.suspicious, name:'TrackName' }));
+    nameRow.appendChild(txt('Simulated Asset asset-01', { size:11, weight:'Semi Bold', name:'AssetName'  }));
+    nameRow.appendChild(txt('within range of',          { size:11, color:C.ghost }));
+    nameRow.appendChild(txt('Simulated Track',          { size:11, weight:'Semi Bold', color:C.suspicious, name:'TrackName' }));
 
     const metaRow = mkFrame({ gap:12, crossAlign:'CENTER' });
     metaRow.appendChild(txt('Distance: ', { size:10, color:C.ghost }));
@@ -484,8 +544,8 @@ X = 100; Y += 200;
 // sublabel: text-[10px] ghost
 {
   const METRIC = [
-    { v:'False', valC:C.ink,   stroked:false },
-    { v:'True',  valC:C.accent, stroked:true  },
+    { v:'Default',     label:'ASSETS',       value:'2', sub:'TEMPLATE_ASSET',   valC:C.ink,    stroked:false },
+    { v:'Highlighted', label:'ACTIVE TASKS', value:'1', sub:'STATUS_EXECUTING', valC:C.accent, stroked:true  },
   ];
   const variants = METRIC.map(function(d) {
     const k = figma.createComponent();
@@ -495,9 +555,9 @@ X = 100; Y += 200;
     k.fills = solid(C.panel);
     k.strokes = border(d.stroked ? C.accent : C.border, d.stroked ? 0.30 : 1);
     k.strokeWeight = 1; k.strokeAlign = 'INSIDE';
-    k.appendChild(txt('LABEL', { size:10, color:C.ghost, weight:'Medium', name:'Label' }));
-    k.appendChild(txt('42',    { size:24, color:d.valC,  weight:'Bold',   name:'Value' }));
-    k.appendChild(txt('sublabel', { size:10, color:C.ghost, name:'Sublabel' }));
+    k.appendChild(txt(d.label,   { size:10, color:C.ghost, weight:'Medium', name:'Label'    }));
+    k.appendChild(txt(d.value,   { size:24, color:d.valC,  weight:'Bold',   name:'Value'    }));
+    k.appendChild(txt(d.sub,     { size:10, color:C.ghost,                  name:'Sublabel' }));
     page.appendChild(k); return k;
   });
   const set = figma.combineAsVariants(variants, page);
@@ -517,13 +577,36 @@ X = 100; Y += 300;
 // ── 9. EntityPanel ───────────────────────────────────────────────────────────
 // Filter variant → figma.enum("Filter", { All, Assets, Tracks })
 {
-  const FILTERS = [
-    { v:'All',    label:'Entities',        sub:'2 assets · 1 track' },
-    { v:'Assets', label:'Entities',        sub:'2 assets'           },
-    { v:'Tracks', label:'Entities',        sub:'1 track'            },
+  // Variant values match the filter prop in EntityPanel stories: "all", "TEMPLATE_ASSET", "TEMPLATE_TRACK"
+  // Header counts and body rows match MOCK_ENTITIES (2 assets, 1 track)
+  var FILTERS = [
+    {
+      v:'all',
+      sub:'2 assets · 1 track',
+      rows:[
+        { name:'Simulated Asset asset-01', disp:'FRIENDLY',        dispC:C.friendly,   tmpl:'ASSET', tmplC:C.assumed    },
+        { name:'Simulated Asset asset-02', disp:'ASSUMED FRIENDLY', dispC:C.assumed,   tmpl:'ASSET', tmplC:C.assumed    },
+        { name:'Simulated Track',          disp:'SUSPICIOUS',       dispC:C.suspicious, tmpl:'TRACK', tmplC:C.suspicious },
+      ],
+    },
+    {
+      v:'TEMPLATE_ASSET',
+      sub:'2 assets',
+      rows:[
+        { name:'Simulated Asset asset-01', disp:'FRIENDLY',        dispC:C.friendly, tmpl:'ASSET', tmplC:C.assumed },
+        { name:'Simulated Asset asset-02', disp:'ASSUMED FRIENDLY', dispC:C.assumed, tmpl:'ASSET', tmplC:C.assumed },
+      ],
+    },
+    {
+      v:'TEMPLATE_TRACK',
+      sub:'1 track',
+      rows:[
+        { name:'Simulated Track', disp:'SUSPICIOUS', dispC:C.suspicious, tmpl:'TRACK', tmplC:C.suspicious },
+      ],
+    },
   ];
-  const variants = FILTERS.map(function(d) {
-    const k = figma.createComponent();
+  var epVariants = FILTERS.map(function(d) {
+    var k = figma.createComponent();
     k.name = 'Filter='+d.v;
     al(k, { dir:'VERTICAL', gap:0, crossAlign:'MIN', main:'FIXED', cross:'FIXED' });
     k.cornerRadius = 2;
@@ -531,50 +614,107 @@ X = 100; Y += 300;
     k.strokes = border(C.border); k.strokeWeight = 1; k.strokeAlign = 'INSIDE';
     k.resize(300, 480); k.clipsContent = true;
 
-    // Header: px-4=16 py-3=12 border-bottom
-    const hdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
-                           bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE', stretch:true });
-    hdr.appendChild(txt(d.label.toUpperCase(), { size:11, weight:'Semi Bold', color:C.ghost, name:'PanelTitle' }));
-    hdr.appendChild(txt(d.sub, { size:10, color:C.ghost, name:'PanelCount' }));
+    // Header
+    var hdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
+                         bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE', stretch:true });
+    hdr.appendChild(txt('ENTITIES', { size:11, weight:'Semi Bold', color:C.ghost, name:'PanelTitle' }));
+    hdr.appendChild(txt(d.sub,      { size:10, color:C.ghost, name:'PanelCount' }));
 
-    // Body: flex-1 (grow + stretch), inner gap-px=1 p-2=8
-    const body = mkFrame({ dir:'VERTICAL', gap:1, px:8, py:8, bg:C.panel, stretch:true, grow:true });
-    body.appendChild(txt('Entity rows render here', { size:11, color:C.ghost }));
+    // Body: flex-1 with simplified entity rows matching EntityRow content
+    var body = mkFrame({ dir:'VERTICAL', gap:1, px:8, py:8, bg:C.panel, stretch:true, grow:true });
+    d.rows.forEach(function(r) {
+      var row = mkFrame({ dir:'VERTICAL', gap:4, px:12, py:8, bg:C.card, radius:2, stretch:true });
+      row.strokes = border(C.border); row.strokeWeight = 1; row.strokeAlign = 'INSIDE';
+      // name line
+      var nameL = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', gap:4, stretch:true });
+      nameL.appendChild(txt(r.name, { size:11, weight:'Semi Bold', name:'Name' }));
+      var lb = mkFrame({ px:4, py:1, gap:3, radius:3 });
+      lb.fills = [{ type:'SOLID', color:C.friendly, opacity:0.10 }];
+      lb.appendChild(dot(C.friendly, 4));
+      lb.appendChild(txt('LIVE', { size:9, color:C.friendly, weight:'Semi Bold' }));
+      nameL.appendChild(lb);
+      row.appendChild(nameL);
+      // badge line
+      var badgesL = mkFrame({ gap:4, crossAlign:'CENTER' });
+      var tb = mkFrame({ px:4, py:1, gap:3, radius:3 });
+      tb.fills = [{ type:'SOLID', color:r.tmplC, opacity:0.10 }];
+      tb.appendChild(txt(r.tmpl, { size:9, color:r.tmplC, weight:'Semi Bold' }));
+      var db = mkFrame({ px:4, py:1, gap:4, radius:3 });
+      db.fills = [{ type:'SOLID', color:r.dispC, opacity:0.12 }];
+      db.appendChild(dot(r.dispC, 4));
+      db.appendChild(txt(r.disp, { size:9, color:r.dispC, weight:'Semi Bold' }));
+      badgesL.appendChild(tb);
+      badgesL.appendChild(db);
+      row.appendChild(badgesL);
+      body.appendChild(row);
+    });
 
     k.appendChild(hdr);
     k.appendChild(body);
     page.appendChild(k); return k;
   });
-  const set = figma.combineAsVariants(variants, page);
-  set.name = 'EntityPanel'; styleSet(set, 20);
-  set.x = X; set.y = Y; X += set.width + RGAP;
+  var epSet = figma.combineAsVariants(epVariants, page);
+  epSet.name = 'EntityPanel'; styleSet(epSet, 20);
+  epSet.x = X; epSet.y = Y; X += epSet.width + RGAP;
 }
 
 // ── 10. TaskPanel ─────────────────────────────────────────────────────────────
+// 2 variants matching Storybook stories: WithTasks, Empty
 {
-  const k = figma.createComponent();
-  k.name = 'TaskPanel';
-  al(k, { dir:'VERTICAL', gap:0, crossAlign:'MIN', main:'FIXED', cross:'FIXED' });
-  k.cornerRadius = 2;
-  k.fills = solid(C.panel);
-  k.strokes = border(C.border); k.strokeWeight = 1; k.strokeAlign = 'INSIDE';
-  k.resize(300, 480); k.clipsContent = true;
+  var TPANELS = [
+    { v:'WithTasks', countTxt:'1 active', empty:false },
+    { v:'Empty',     countTxt:'0 active', empty:true  },
+  ];
+  var tpVariants = TPANELS.map(function(d) {
+    var k = figma.createComponent();
+    k.name = d.v;
+    al(k, { dir:'VERTICAL', gap:0, crossAlign:'MIN', main:'FIXED', cross:'FIXED' });
+    k.cornerRadius = 2;
+    k.fills = solid(C.panel);
+    k.strokes = border(C.border); k.strokeWeight = 1; k.strokeAlign = 'INSIDE';
+    k.resize(300, 480); k.clipsContent = true;
 
-  const hdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
+    var hdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
                          bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE', stretch:true });
-  hdr.appendChild(txt('ACTIVE TASKS', { size:11, weight:'Semi Bold', color:C.ghost }));
-  const countRow = mkFrame({ gap:4, crossAlign:'CENTER' });
-  countRow.appendChild(txt('1', { size:10, color:C.executing, weight:'Semi Bold' }));
-  countRow.appendChild(txt('active', { size:10, color:C.ghost }));
-  hdr.appendChild(countRow);
+    hdr.appendChild(txt('ACTIVE TASKS', { size:11, weight:'Semi Bold', color:C.ghost }));
+    var countRow = mkFrame({ gap:4, crossAlign:'CENTER' });
+    countRow.appendChild(txt(d.empty ? '0' : '1', { size:10, color:d.empty ? C.ghost : C.executing, weight:'Semi Bold' }));
+    countRow.appendChild(txt('active', { size:10, color:C.ghost }));
+    hdr.appendChild(countRow);
 
-  const body = mkFrame({ dir:'VERTICAL', gap:1, px:8, py:8, bg:C.panel, stretch:true, grow:true });
-  body.appendChild(txt('Task rows render here', { size:11, color:C.ghost }));
+    var body = mkFrame({ dir:'VERTICAL', gap:1, px:8, py:8, bg:C.panel, stretch:true, grow:true });
+    if (d.empty) {
+      body.appendChild(txt('No active tasks', { size:11, color:C.ghost }));
+    } else {
+      // Simplified task row matching MOCK_TASKS[0]: Investigate, Executing, asset-01 → track
+      var trow = mkFrame({ dir:'VERTICAL', gap:6, px:12, py:8, bg:C.card, radius:2, stretch:true });
+      trow.strokes = border(C.border); trow.strokeWeight = 1; trow.strokeAlign = 'INSIDE';
+      var tr1 = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', gap:8, stretch:true });
+      var tr1l = mkFrame({ gap:6, crossAlign:'CENTER' });
+      var sb = mkFrame({ px:4, py:1, radius:3 });
+      sb.fills = [{ type:'SOLID', color:C.executing, opacity:0.15 }];
+      sb.appendChild(txt('EXECUTING', { size:9, color:C.executing, weight:'Semi Bold' }));
+      tr1l.appendChild(sb);
+      tr1l.appendChild(txt('Investigate', { size:12, weight:'Semi Bold' }));
+      tr1.appendChild(tr1l);
+      tr1.appendChild(txt('c7d8e9f0…', { size:9, color:C.ghost, family:MONO.family, style:MONO.style }));
+      var tr2 = mkFrame({ gap:4, crossAlign:'CENTER' });
+      tr2.appendChild(txt('asset-01',        { size:10, color:C.ghost }));
+      tr2.appendChild(txt('→',               { size:10, color:C.ghost }));
+      tr2.appendChild(txt('track-f8a3b2c1…', { size:10, color:C.suspicious }));
+      trow.appendChild(tr1);
+      trow.appendChild(tr2);
+      trow.appendChild(txt('Asset asset-01 tasked to perform ISR on Track track-f8a3b2c1…', { size:10, color:C.ghost }));
+      body.appendChild(trow);
+    }
 
-  k.appendChild(hdr);
-  k.appendChild(body);
-  page.appendChild(k);
-  k.x = X; k.y = Y; X += 300 + RGAP;
+    k.appendChild(hdr);
+    k.appendChild(body);
+    page.appendChild(k); return k;
+  });
+  var tpSet = figma.combineAsVariants(tpVariants, page);
+  tpSet.name = 'TaskPanel'; styleSet(tpSet, 20);
+  tpSet.x = X; tpSet.y = Y; X += tpSet.width + RGAP;
 }
 
 // ── 11. SystemLogEntry ────────────────────────────────────────────────────────
@@ -586,46 +726,37 @@ X = 100; Y += 300;
 // logger:    font-semibold  shrink-0
 // message:   text-dim  layoutGrow=1 (fills remaining)
 {
-  const LEVELS = [
-    { level:'INFO',  col:C.dim,        letter:'I' },
-    { level:'WARN',  col:C.suspicious, letter:'W' },
-    { level:'ERROR', col:C.hostile,    letter:'E' },
+  // Messages taken from Storybook stories + MOCK_LOG_ENTRIES, varied by level × logger
+  var SLE_VARIANTS = [
+    { level:'INFO',  col:C.dim,        letter:'I', logger:'EARS',     logC:C.assumed,    msg:'ASSET WITHIN RANGE OF NON-FRIENDLY TRACK'                      },
+    { level:'INFO',  col:C.dim,        letter:'I', logger:'SIMASSET', logC:C.friendly,   msg:'received execute request, sending execute confirmation'         },
+    { level:'INFO',  col:C.dim,        letter:'I', logger:'SIMTRACK', logC:C.suspicious, msg:'# of tracks being tracked: 1'                                  },
+    { level:'WARN',  col:C.suspicious, letter:'W', logger:'EARS',     logC:C.assumed,    msg:'Task c7d8e9f0 status unknown — retrying'                        },
+    { level:'WARN',  col:C.suspicious, letter:'W', logger:'SIMASSET', logC:C.friendly,   msg:'execute request timeout — will retry in 5s'                     },
+    { level:'WARN',  col:C.suspicious, letter:'W', logger:'SIMTRACK', logC:C.suspicious, msg:'track entity expiry approaching — republishing'                 },
+    { level:'ERROR', col:C.hostile,    letter:'E', logger:'EARS',     logC:C.assumed,    msg:'lattice api stream entities error: connection refused'           },
+    { level:'ERROR', col:C.hostile,    letter:'E', logger:'SIMASSET', logC:C.friendly,   msg:'task execution failed — status: STATUS_DONE_NOT_OK'              },
+    { level:'ERROR', col:C.hostile,    letter:'E', logger:'SIMTRACK', logC:C.suspicious, msg:'entity publish failed — lattice unreachable'                    },
   ];
-  const LOGGERS = [
-    { logger:'EARS',     col:C.assumed   },
-    { logger:'SIMASSET', col:C.friendly  },
-    { logger:'SIMTRACK', col:C.suspicious },
-  ];
-  const variants = [];
-  for (var li = 0; li < LEVELS.length; li++) {
-    var ld = LEVELS[li];
-    for (var gi = 0; gi < LOGGERS.length; gi++) {
-      var lg = LOGGERS[gi];
+  const variants = SLE_VARIANTS.map(function(d) {
       const k = figma.createComponent();
-      k.name = 'Level='+ld.level+', Logger='+lg.logger;
-      // HORIZONTAL, items-start (crossAlign MIN), px-3=12 py-0.5=2, gap-2=8
-      // Width FIXED at 560; height hugs (AUTO)
+      k.name = 'Level='+d.level+', Logger='+d.logger;
       al(k, { gap:8, px:12, py:2, crossAlign:'MIN', main:'FIXED', cross:'AUTO' });
       k.fills = solid(C.card);
-      k.resize(560, 10);
-      // timestamp — shrink-0 (hug)
-      k.appendChild(txt('12:34:56', { size:11, color:C.ghost,
+      k.appendChild(txt('19:17:00', { size:11, color:C.ghost,
                                        family:MONO.family, style:MONO.style, name:'Timestamp' }));
-      // level initial — w-5=20px fixed width
-      k.appendChild(txt(ld.letter, { size:11, color:ld.col, weight:'Semi Bold',
-                                      family:MONO.family, style:MONO.style,
-                                      name:'LevelInitial', w:20 }));
-      // logger — shrink-0
-      k.appendChild(txt(lg.logger+':', { size:11, color:lg.col, weight:'Semi Bold',
-                                          family:MONO.family, style:MONO.style, name:'Logger' }));
-      // message — fills remaining width
-      k.appendChild(txt('Entity published successfully to lattice',
-                         { size:11, color:C.dim, family:MONO.family, style:MONO.style,
-                           name:'Message', grow:true }));
+      k.appendChild(txt(d.letter, { size:11, color:d.col, weight:'Medium',
+                                     family:MONO.family, style:MONO.style, name:'LevelInitial', w:20 }));
+      k.appendChild(txt(d.logger+':', { size:11, color:d.logC, weight:'Medium',
+                                         family:MONO.family, style:MONO.style, name:'Logger' }));
+      k.appendChild(txt(d.msg, { size:11, color:C.dim, family:MONO.family, style:MONO.style,
+                                  name:'Message', grow:true }));
+      k.primaryAxisSizingMode = 'FIXED';
+      k.counterAxisSizingMode = 'AUTO';
+      k.resize(560, k.height > 0 ? k.height : 18);
       page.appendChild(k);
-      variants.push(k);
-    }
-  }
+      return k;
+  });
   const set = figma.combineAsVariants(variants, page);
   set.name = 'SystemLogEntry'; styleSet(set, 4);
   set.x = X; set.y = Y; X += set.width + RGAP;
@@ -649,9 +780,30 @@ X = 100; Y += 300;
   hdr.appendChild(txt('SYSTEM LOG', { size:11, weight:'Semi Bold', color:C.ghost }));
   hdr.appendChild(txt('10 entries', { size:10, color:C.ghost }));
 
-  // Body inner: flex flex-col py-1=4px, no horizontal padding
+  // Body: all 10 MOCK_LOG_ENTRIES as individual rows
   const body = mkFrame({ dir:'VERTICAL', gap:0, pt:4, pb:4, bg:C.canvas, stretch:true, grow:true });
-  body.appendChild(txt('Log entries render here', { size:11, color:C.ghost, family:MONO.family, style:MONO.style }));
+  var LOG_ENTRIES = [
+    { t:'19:16:52', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'# of assets being tracked: 2, # of tracks being tracked: 1' },
+    { t:'19:16:53', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'ASSET WITHIN RANGE OF NON-FRIENDLY TRACK'                   },
+    { t:'19:16:53', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'overriding disposition for track track-f8a3b2c1-4d5e-6f7a…'  },
+    { t:'19:16:54', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'Asset asset-01 tasked to perform ISR on Track track-f8a3…'   },
+    { t:'19:16:54', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'Task created - task id is c7d8e9f0-1a2b-3c4d-5e6f-7a8b…'    },
+    { t:'19:16:54', l:'I', lC:C.dim,        logger:'SIMASSET', logC:C.friendly,   msg:'received execute request, sending execute confirmation'      },
+    { t:'19:16:56', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'Current task status for this task_id is STATUS_EXECUTING'    },
+    { t:'19:16:57', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'INVESTIGATION ALREADY IN PROGRESS - SKIPPING'               },
+    { t:'19:16:58', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'# of assets being tracked: 2, # of tracks being tracked: 1' },
+    { t:'19:16:59', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'# of assets being tracked: 2, # of tracks being tracked: 1' },
+  ];
+  LOG_ENTRIES.forEach(function(e) {
+    var row = mkFrame({ gap:8, px:12, py:2, crossAlign:'MIN', stretch:true });
+    row.fills = [];
+    row.appendChild(txt(e.t,         { size:11, color:C.ghost, family:MONO.family, style:MONO.style }));
+    row.appendChild(txt(e.l,         { size:11, color:e.lC,    family:MONO.family, style:MONO.style, weight:'Medium', w:16 }));
+    row.appendChild(txt(e.logger+':', { size:11, color:e.logC,  family:MONO.family, style:MONO.style, weight:'Medium' }));
+    row.appendChild(txt(e.msg,       { size:11, color:C.dim,   family:MONO.family, style:MONO.style, grow:true }));
+    row.primaryAxisSizingMode = 'FIXED';
+    body.appendChild(row);
+  });
 
   k.appendChild(hdr);
   k.appendChild(body);
@@ -693,7 +845,7 @@ X = 100; Y += 620;
   // ── Metrics strip: grid-cols-4 gap-px=1 bg-border (gap shows as border lines)
   //    shrink-0 → counterAxisSizingMode FIXED, height hugs card content
   const metricsStrip = mkFrame({
-    gap:1, px:0, py:0, bg:C.border, crossAlign:'STRETCH',
+    gap:1, px:0, py:0, bg:C.border, crossAlign:'MIN',
     stretch:true, name:'metrics',
   });
   const METRICS = [
