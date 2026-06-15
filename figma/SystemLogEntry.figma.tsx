@@ -1,20 +1,10 @@
-/**
- * Code Connect: SystemLogEntry
- *
- * Figma component setup:
- *   - Component name: "SystemLogEntry"
- *   - Variant property: "Level" with values: "INFO", "WARN", "ERROR"
- *   - Variant property: "Logger" with values: "EARS", "SIMASSET", "SIMTRACK"
- *   - Text layers: "Timestamp", "Message"
- */
-
 import figma from "@figma/code-connect"
 import { SystemLogEntry } from "@/components/lattice/SystemLogEntry"
 import type { LogLevel } from "@/lib/types"
 
 figma.connect(
   SystemLogEntry,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-417",
   {
     props: {
       level: figma.enum<LogLevel>("Level", {
@@ -22,16 +12,18 @@ figma.connect(
         WARN: "WARN",
         ERROR: "ERROR",
       }),
-      logger: figma.string("Logger"),
-      message: figma.string("Message"),
+      logger: figma.enum("Logger", {
+        EARS:     "EARS",
+        SIMASSET: "SIMASSET",
+        SIMTRACK: "SIMTRACK",
+      }),
     },
-    example: ({ level, logger, message }) => (
+    example: ({ level, logger }) => (
       <SystemLogEntry
-        id="example"
         level={level}
         logger={logger}
-        message={message}
-        timestamp={new Date()}
+        message="ASSET WITHIN RANGE OF NON-FRIENDLY TRACK"
+        timestamp={new Date("2026-01-01T11:16:53")}
       />
     ),
   }

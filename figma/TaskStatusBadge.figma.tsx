@@ -13,7 +13,7 @@ import type { TaskStatusValue } from "@/lib/types"
 
 figma.connect(
   TaskStatusBadge,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-90",
   {
     props: {
       status: figma.enum<TaskStatusValue>("Status", {

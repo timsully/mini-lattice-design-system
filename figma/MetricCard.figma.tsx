@@ -1,27 +1,23 @@
-/**
- * Code Connect: MetricCard
- *
- * Figma component setup:
- *   - Component name: "MetricCard"
- *   - Text layers: "Label", "Value", "Sublabel"
- *   - Boolean variant property: "Highlight"
- */
-
 import figma from "@figma/code-connect"
 import { MetricCard } from "@/components/lattice/MetricCard"
 
 figma.connect(
   MetricCard,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-255",
   {
     props: {
-      label: figma.string("Label"),
-      value: figma.string("Value"),
-      sublabel: figma.string("Sublabel"),
-      highlight: figma.boolean("Highlight"),
+      highlight: figma.enum("Highlight", {
+        Default:     false,
+        Highlighted: true,
+      }),
     },
-    example: ({ label, value, sublabel, highlight }) => (
-      <MetricCard label={label} value={value} sublabel={sublabel} highlight={highlight} />
+    example: ({ highlight }) => (
+      <MetricCard
+        label="ACTIVE TASKS"
+        value={1}
+        sublabel="STATUS_EXECUTING"
+        highlight={highlight}
+      />
     ),
   }
 )

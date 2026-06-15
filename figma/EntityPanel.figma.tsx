@@ -14,7 +14,7 @@ import type { OntologyTemplate } from "@/lib/types"
 
 figma.connect(
   EntityPanel,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-2207",
   {
     props: {
       filter: figma.enum<"all" | OntologyTemplate>("Filter", {

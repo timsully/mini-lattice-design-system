@@ -13,7 +13,7 @@ import { MOCK_TASKS } from "@/lib/mock-data"
 
 figma.connect(
   TaskPanel,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-2238",
   {
     props: {},
     example: () => <TaskPanel tasks={MOCK_TASKS} />,

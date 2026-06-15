@@ -13,7 +13,7 @@ import { MOCK_LOG_ENTRIES } from "@/lib/mock-data"
 
 figma.connect(
   SystemLog,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-418",
   {
     props: {},
     example: () => <SystemLog entries={MOCK_LOG_ENTRIES} />,

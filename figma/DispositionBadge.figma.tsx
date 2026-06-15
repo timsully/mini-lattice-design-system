@@ -4,7 +4,7 @@
  * After publishing your Figma design system:
  * 1. Open the Figma file and select the DispositionBadge component
  * 2. Right-click → Copy link to selection
- * 3. Replace FIGMA_NODE_URL_PLACEHOLDER below with that URL
+ * 3. Replace https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-66 below with that URL
  *
  * Figma component setup:
  *   - Component name: "DispositionBadge"
@@ -19,7 +19,7 @@ import type { Disposition } from "@/lib/types"
 
 figma.connect(
   DispositionBadge,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-66",
   {
     props: {
       disposition: figma.enum<Disposition>("Disposition", {

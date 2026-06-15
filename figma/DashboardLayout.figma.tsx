@@ -15,7 +15,7 @@ import { DISTANCE_THRESHOLD_MILES } from "@/lib/tokens"
 
 figma.connect(
   DashboardLayout,
-  "FIGMA_NODE_URL_PLACEHOLDER",
+  "https://www.figma.com/design/MyRHMbJdlP0HuyMEvZGTAm/Lattice-Design-System?node-id=77-1475",
   {
     props: {},
     example: () => (
