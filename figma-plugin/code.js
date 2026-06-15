@@ -350,7 +350,7 @@ X = 100; Y += 200;
       tmpl:'ASSET', platform:'USV', tmplC:C.assumed,
       disp:'FRIENDLY', dispC:C.friendly,
       lat:'1.0000', lng:'1.0000',
-      env:'SURFACE', dataType:'Simulated Asset', updated:'19:17:00',
+      env:'SURFACE', dataType:'Simulated Asset', updated:'11:17:00',
     },
     {
       v:'AssumedFriendlyAsset',
@@ -359,7 +359,7 @@ X = 100; Y += 200;
       tmpl:'ASSET', platform:'USV', tmplC:C.assumed,
       disp:'ASSUMED FRIENDLY', dispC:C.assumed,
       lat:'1.0100', lng:'1.0100',
-      env:'SURFACE', dataType:'Simulated Asset', updated:'19:17:00',
+      env:'SURFACE', dataType:'Simulated Asset', updated:'11:17:00',
     },
     {
       v:'SuspiciousTrack',
@@ -368,7 +368,7 @@ X = 100; Y += 200;
       tmpl:'TRACK', platform:null, tmplC:C.suspicious,
       disp:'SUSPICIOUS', dispC:C.suspicious,
       lat:'1.0300', lng:'1.0300',
-      env:'SURFACE', dataType:'Simulated Track', updated:'19:17:00',
+      env:'SURFACE', dataType:'Simulated Track', updated:'11:17:00',
     },
   ];
   var erVariants = EROWS.map(function(d) {
@@ -488,6 +488,7 @@ X = 100; Y += 200;
 }
 
 // ── 7. ProximityAlert ────────────────────────────────────────────────────────
+var proxVariants; var slComp; // hoisted for DashboardLayout to reference as instances
 // Source: flex items-start gap-3 rounded-sm border px-3 py-2.5
 // HORIZONTAL  gap-3=12  rounded-sm=2  px-3=12  py-2.5=10  border:1px
 // Width: fill container  Height: hug content
@@ -530,6 +531,7 @@ X = 100; Y += 200;
     k.appendChild(right);
     page.appendChild(k); return k;
   });
+  proxVariants = variants;
   const set = figma.combineAsVariants(variants, page);
   set.name = 'ProximityAlert'; styleSet(set);
   set.x = X; set.y = Y; X += set.width + RGAP;
@@ -577,33 +579,12 @@ X = 100; Y += 300;
 // ── 9. EntityPanel ───────────────────────────────────────────────────────────
 // Filter variant → figma.enum("Filter", { All, Assets, Tracks })
 {
-  // Variant values match the filter prop in EntityPanel stories: "all", "TEMPLATE_ASSET", "TEMPLATE_TRACK"
-  // Header counts and body rows match MOCK_ENTITIES (2 assets, 1 track)
+  // rowIndices reference erVariants: 0=FriendlyAsset, 1=AssumedFriendlyAsset, 2=SuspiciousTrack
+  // countParts: colored sub-labels matching HTML (assets=assumed, dot=ghost, tracks=suspicious)
   var FILTERS = [
-    {
-      v:'all',
-      sub:'2 assets · 1 track',
-      rows:[
-        { name:'Simulated Asset asset-01', disp:'FRIENDLY',        dispC:C.friendly,   tmpl:'ASSET', tmplC:C.assumed    },
-        { name:'Simulated Asset asset-02', disp:'ASSUMED FRIENDLY', dispC:C.assumed,   tmpl:'ASSET', tmplC:C.assumed    },
-        { name:'Simulated Track',          disp:'SUSPICIOUS',       dispC:C.suspicious, tmpl:'TRACK', tmplC:C.suspicious },
-      ],
-    },
-    {
-      v:'TEMPLATE_ASSET',
-      sub:'2 assets',
-      rows:[
-        { name:'Simulated Asset asset-01', disp:'FRIENDLY',        dispC:C.friendly, tmpl:'ASSET', tmplC:C.assumed },
-        { name:'Simulated Asset asset-02', disp:'ASSUMED FRIENDLY', dispC:C.assumed, tmpl:'ASSET', tmplC:C.assumed },
-      ],
-    },
-    {
-      v:'TEMPLATE_TRACK',
-      sub:'1 track',
-      rows:[
-        { name:'Simulated Track', disp:'SUSPICIOUS', dispC:C.suspicious, tmpl:'TRACK', tmplC:C.suspicious },
-      ],
-    },
+    { v:'all',            countParts:[{t:'2 assets',c:C.assumed},{t:'·',c:C.ghost},{t:'1 track',c:C.suspicious}], rowIndices:[0, 1, 2] },
+    { v:'TEMPLATE_ASSET', countParts:[{t:'2 assets',c:C.assumed}],                                                rowIndices:[0, 1]    },
+    { v:'TEMPLATE_TRACK', countParts:[{t:'1 track', c:C.suspicious}],                                             rowIndices:[2]       },
   ];
   var epVariants = FILTERS.map(function(d) {
     var k = figma.createComponent();
@@ -614,39 +595,21 @@ X = 100; Y += 300;
     k.strokes = border(C.border); k.strokeWeight = 1; k.strokeAlign = 'INSIDE';
     k.resize(300, 480); k.clipsContent = true;
 
-    // Header
+    // Header: title left, colored count parts right
     var hdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
                          bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE', stretch:true });
     hdr.appendChild(txt('ENTITIES', { size:11, weight:'Semi Bold', color:C.ghost, name:'PanelTitle' }));
-    hdr.appendChild(txt(d.sub,      { size:10, color:C.ghost, name:'PanelCount' }));
+    var countRow = mkFrame({ gap:4, crossAlign:'CENTER' });
+    countRow.fills = [];
+    d.countParts.forEach(function(p) { countRow.appendChild(txt(p.t, { size:10, color:p.c })); });
+    hdr.appendChild(countRow);
 
-    // Body: flex-1 with simplified entity rows matching EntityRow content
+    // Body: instances of the matching EntityRow variants (fill width, hug height)
     var body = mkFrame({ dir:'VERTICAL', gap:1, px:8, py:8, bg:C.panel, stretch:true, grow:true });
-    d.rows.forEach(function(r) {
-      var row = mkFrame({ dir:'VERTICAL', gap:4, px:12, py:8, bg:C.card, radius:2, stretch:true });
-      row.strokes = border(C.border); row.strokeWeight = 1; row.strokeAlign = 'INSIDE';
-      // name line
-      var nameL = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', gap:4, stretch:true });
-      nameL.appendChild(txt(r.name, { size:11, weight:'Semi Bold', name:'Name' }));
-      var lb = mkFrame({ px:4, py:1, gap:3, radius:3 });
-      lb.fills = [{ type:'SOLID', color:C.friendly, opacity:0.10 }];
-      lb.appendChild(dot(C.friendly, 4));
-      lb.appendChild(txt('LIVE', { size:9, color:C.friendly, weight:'Semi Bold' }));
-      nameL.appendChild(lb);
-      row.appendChild(nameL);
-      // badge line
-      var badgesL = mkFrame({ gap:4, crossAlign:'CENTER' });
-      var tb = mkFrame({ px:4, py:1, gap:3, radius:3 });
-      tb.fills = [{ type:'SOLID', color:r.tmplC, opacity:0.10 }];
-      tb.appendChild(txt(r.tmpl, { size:9, color:r.tmplC, weight:'Semi Bold' }));
-      var db = mkFrame({ px:4, py:1, gap:4, radius:3 });
-      db.fills = [{ type:'SOLID', color:r.dispC, opacity:0.12 }];
-      db.appendChild(dot(r.dispC, 4));
-      db.appendChild(txt(r.disp, { size:9, color:r.dispC, weight:'Semi Bold' }));
-      badgesL.appendChild(tb);
-      badgesL.appendChild(db);
-      row.appendChild(badgesL);
-      body.appendChild(row);
+    d.rowIndices.forEach(function(i) {
+      var inst = erVariants[i].createInstance();
+      inst.layoutAlign = 'STRETCH';  // fill body width
+      body.appendChild(inst);
     });
 
     k.appendChild(hdr);
@@ -686,25 +649,33 @@ X = 100; Y += 300;
     if (d.empty) {
       body.appendChild(txt('No active tasks', { size:11, color:C.ghost }));
     } else {
-      // Simplified task row matching MOCK_TASKS[0]: Investigate, Executing, asset-01 → track
-      var trow = mkFrame({ dir:'VERTICAL', gap:6, px:12, py:8, bg:C.card, radius:2, stretch:true });
+      var trow = mkFrame({ dir:'VERTICAL', gap:8, px:12, py:10, bg:C.card, radius:2, stretch:true });
       trow.strokes = border(C.border); trow.strokeWeight = 1; trow.strokeAlign = 'INSIDE';
+      // Row 1: status badge + task type + task ID
       var tr1 = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', gap:8, stretch:true });
-      var tr1l = mkFrame({ gap:6, crossAlign:'CENTER' });
-      var sb = mkFrame({ px:4, py:1, radius:3 });
-      sb.fills = [{ type:'SOLID', color:C.executing, opacity:0.15 }];
-      sb.appendChild(txt('EXECUTING', { size:9, color:C.executing, weight:'Semi Bold' }));
+      var tr1l = mkFrame({ gap:8, crossAlign:'CENTER' });
+      var sb = mkFrame({ px:6, py:2, radius:3 });
+      sb.fills = [{ type:'SOLID', color:C.executing, opacity:0.10 }];
+      sb.appendChild(txt('Executing', { size:10, color:C.executing, weight:'Semi Bold' }));
       tr1l.appendChild(sb);
-      tr1l.appendChild(txt('Investigate', { size:12, weight:'Semi Bold' }));
+      tr1l.appendChild(txt('anduril.tasks.v2. Investigate', { size:14, weight:'Semi Bold' }));
       tr1.appendChild(tr1l);
-      tr1.appendChild(txt('c7d8e9f0…', { size:9, color:C.ghost, family:MONO.family, style:MONO.style }));
-      var tr2 = mkFrame({ gap:4, crossAlign:'CENTER' });
-      tr2.appendChild(txt('asset-01',        { size:10, color:C.ghost }));
-      tr2.appendChild(txt('→',               { size:10, color:C.ghost }));
-      tr2.appendChild(txt('track-f8a3b2c1…', { size:10, color:C.suspicious }));
+      tr1.appendChild(txt('c7d8e9f0…', { size:10, color:C.ghost, family:MONO.family, style:MONO.style }));
+      // Row 2: assignee → target
+      var tr2 = mkFrame({ gap:6, crossAlign:'CENTER' });
+      tr2.appendChild(txt('asset-01',                                         { size:11, color:C.ghost }));
+      tr2.appendChild(txt('→',                                                { size:11, color:C.ghost }));
+      tr2.appendChild(txt('track-f8a3b2c1-4d5e-6f7a-8b9c-0d1e2f3a4b5c', { size:11, color:C.suspicious }));
+      // Row 3: description
+      // Row 4: initiated by
+      var tr4 = mkFrame({ gap:4, crossAlign:'CENTER' });
+      tr4.fills = [];
+      tr4.appendChild(txt('Initiated by ',        { size:10, color:C.ghost }));
+      tr4.appendChild(txt('auto-reconnaissance',  { size:10, color:C.dim   }));
       trow.appendChild(tr1);
       trow.appendChild(tr2);
-      trow.appendChild(txt('Asset asset-01 tasked to perform ISR on Track track-f8a3b2c1…', { size:10, color:C.ghost }));
+      trow.appendChild(txt('Asset asset-01 tasked to perform ISR on Track track-f8a3b2c1-4d5e-6f7a-8b9c-0d1e2f3a4b5c', { size:11, color:C.ghost, w:252 }));
+      trow.appendChild(tr4);
       body.appendChild(trow);
     }
 
@@ -743,7 +714,7 @@ X = 100; Y += 300;
       k.name = 'Level='+d.level+', Logger='+d.logger;
       al(k, { gap:8, px:12, py:2, crossAlign:'MIN', main:'FIXED', cross:'AUTO' });
       k.fills = solid(C.card);
-      k.appendChild(txt('19:17:00', { size:11, color:C.ghost,
+      k.appendChild(txt('11:17:00', { size:11, color:C.ghost,
                                        family:MONO.family, style:MONO.style, name:'Timestamp' }));
       k.appendChild(txt(d.letter, { size:11, color:d.col, weight:'Medium',
                                      family:MONO.family, style:MONO.style, name:'LevelInitial', w:20 }));
@@ -767,7 +738,8 @@ X = 100; Y += 300;
 // Header: flex items-center justify-between px-4 py-3 border-b border-border
 // Body:   flex-1 overflow-y-auto → inner flex flex-col py-1 (py:4px no horiz padding)
 {
-  const k = figma.createComponent();
+  slComp = figma.createComponent();
+  const k = slComp;
   k.name = 'SystemLog';
   al(k, { dir:'VERTICAL', gap:0, crossAlign:'MIN', main:'FIXED', cross:'FIXED' });
   k.cornerRadius = 2;
@@ -783,16 +755,16 @@ X = 100; Y += 300;
   // Body: all 10 MOCK_LOG_ENTRIES as individual rows
   const body = mkFrame({ dir:'VERTICAL', gap:0, pt:4, pb:4, bg:C.canvas, stretch:true, grow:true });
   var LOG_ENTRIES = [
-    { t:'19:16:52', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'# of assets being tracked: 2, # of tracks being tracked: 1' },
-    { t:'19:16:53', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'ASSET WITHIN RANGE OF NON-FRIENDLY TRACK'                   },
-    { t:'19:16:53', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'overriding disposition for track track-f8a3b2c1-4d5e-6f7a…'  },
-    { t:'19:16:54', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'Asset asset-01 tasked to perform ISR on Track track-f8a3…'   },
-    { t:'19:16:54', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'Task created - task id is c7d8e9f0-1a2b-3c4d-5e6f-7a8b…'    },
-    { t:'19:16:54', l:'I', lC:C.dim,        logger:'SIMASSET', logC:C.friendly,   msg:'received execute request, sending execute confirmation'      },
-    { t:'19:16:56', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'Current task status for this task_id is STATUS_EXECUTING'    },
-    { t:'19:16:57', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'INVESTIGATION ALREADY IN PROGRESS - SKIPPING'               },
-    { t:'19:16:58', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'# of assets being tracked: 2, # of tracks being tracked: 1' },
-    { t:'19:16:59', l:'I', lC:C.dim,        logger:'EARS',     logC:C.assumed,    msg:'# of assets being tracked: 2, # of tracks being tracked: 1' },
+    { t:'11:16:52', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'# of assets being tracked: 2, # of tracks being tracked: 1'         },
+    { t:'11:16:53', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'ASSET WITHIN RANGE OF NON-FRIENDLY TRACK'                            },
+    { t:'11:16:53', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'overriding disposition for track track-f8a3b2c1-4d5e-6f7a-8b9c-0d1e' },
+    { t:'11:16:54', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'Asset asset-01 tasked to perform ISR on Track track-f8a3b2c1-4d5e…'  },
+    { t:'11:16:54', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'Task created - view Lattice UI, task id is c7d8e9f0-1a2b-3c4d-5e6f…' },
+    { t:'11:16:54', l:'I', lC:C.dim, logger:'SIMASSET', logC:C.friendly, msg:'received execute request, sending execute confirmation'               },
+    { t:'11:16:56', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'Current task status for this task_id is STATUS_EXECUTING'             },
+    { t:'11:16:57', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'INVESTIGATION ALREADY IN PROGRESS - SKIPPING'                        },
+    { t:'11:16:58', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'# of assets being tracked: 2, # of tracks being tracked: 1'          },
+    { t:'11:16:59', l:'I', lC:C.dim, logger:'EARS',     logC:C.assumed,  msg:'# of assets being tracked: 2, # of tracks being tracked: 1'          },
   ];
   LOG_ENTRIES.forEach(function(e) {
     var row = mkFrame({ gap:8, px:12, py:2, crossAlign:'MIN', stretch:true });
@@ -820,8 +792,7 @@ X = 100; Y += 620;
 // Source: flex flex-col h-screen bg-canvas text-ink
 // Header: flex items-center justify-between px-4 h-12=48px border-b bg-panel shrink-0
 // Metrics: grid grid-cols-4 gap-px=1 border-b bg-border shrink-0
-//          (bg-border between cards creates the 1px gap illusion)
-// Main: flex-1 overflow-hidden → layoutGrow=1
+// Main: grid grid-cols-[300px_1fr_300px] gap-px h-full bg-border
 {
   const k = figma.createComponent();
   k.name = 'DashboardLayout';
@@ -829,70 +800,93 @@ X = 100; Y += 620;
   k.fills = solid(C.canvas);
   k.resize(1440, 900); k.clipsContent = true;
 
-  // ── Header bar: h-12=48px, px-4=16px, SPACE_BETWEEN, shrink-0
+  // ── Header: h-12=48px, SPACE_BETWEEN, left group + right group
   const hdrBar = mkFrame({
     mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16,
     bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE',
     stretch:true, cross:'FIXED',
   });
   hdrBar.resize(hdrBar.width, 48);
-  hdrBar.appendChild(txt('EARS — Entity Auto Reconnaissance System', { size:13, weight:'Semi Bold' }));
-  const livePill = mkFrame({ gap:4, px:6, py:2, bg:C.card, radius:4 });
-  livePill.appendChild(dot(C.friendly, 6));
-  livePill.appendChild(txt('LIVE', { size:10, color:C.friendly, weight:'Semi Bold' }));
-  hdrBar.appendChild(livePill);
+  // Left group: EARS acronym + 1px divider + full title
+  const hdrLeft = mkFrame({ gap:12, crossAlign:'CENTER' });
+  hdrLeft.fills = [];
+  hdrLeft.appendChild(txt('EARS', { size:11, weight:'Bold', color:C.ghost }));
+  const hdrDivider = figma.createRectangle();
+  hdrDivider.fills = solid(C.border);
+  hdrDivider.resize(1, 16);
+  hdrLeft.appendChild(hdrDivider);
+  hdrLeft.appendChild(txt('Entity Auto Reconnaissance System', { size:14, weight:'Semi Bold' }));
+  hdrBar.appendChild(hdrLeft);
+  // Right group: animated dot + LIVE label
+  const hdrRight = mkFrame({ gap:8, crossAlign:'CENTER' });
+  hdrRight.fills = [];
+  hdrRight.appendChild(dot(C.friendly, 6));
+  hdrRight.appendChild(txt('LIVE', { size:10, color:C.friendly, weight:'Semi Bold' }));
+  hdrBar.appendChild(hdrRight);
 
-  // ── Metrics strip: grid-cols-4 gap-px=1 bg-border (gap shows as border lines)
-  //    shrink-0 → counterAxisSizingMode FIXED, height hugs card content
+  // ── Metrics strip: 4 cards separated by 1px gap-px (bg-border shows through)
   const metricsStrip = mkFrame({
     gap:1, px:0, py:0, bg:C.border, crossAlign:'MIN',
     stretch:true, name:'metrics',
   });
   const METRICS = [
-    { label:'ASSETS',             value:'2',    sub:'TEMPLATE_ASSET'    },
-    { label:'TRACKS',             value:'1',    sub:'TEMPLATE_TRACK'    },
-    { label:'ACTIVE TASKS',       value:'1',    sub:'STATUS_EXECUTING'  },
-    { label:'DISTANCE THRESHOLD', value:'5 mi', sub:'Proximity trigger' },
+    { label:'ASSETS',             value:'2',    sub:'TEMPLATE_ASSET',   accent:false },
+    { label:'TRACKS',             value:'1',    sub:'TEMPLATE_TRACK',   accent:false },
+    { label:'ACTIVE TASKS',       value:'1',    sub:'STATUS_EXECUTING', accent:true  },
+    { label:'DISTANCE THRESHOLD', value:'5 mi', sub:'Proximity trigger', accent:false },
   ];
   for (var mi = 0; mi < METRICS.length; mi++) {
     var md = METRICS[mi];
     const card = mkFrame({ dir:'VERTICAL', gap:4, px:16, py:12, bg:C.panel, crossAlign:'MIN' });
-    card.layoutGrow  = 1;         // equal width fill (replaces grid-cols-4)
-    card.layoutAlign = 'STRETCH'; // fills strip height
-    card.appendChild(txt(md.label,  { size:10, color:C.ghost,  weight:'Medium' }));
-    card.appendChild(txt(md.value,  { size:24, color:mi===2?C.accent:C.ink, weight:'Bold' }));
-    card.appendChild(txt(md.sub,    { size:10, color:C.ghost   }));
+    card.strokes = border(md.accent ? C.accent : C.border, md.accent ? 0.30 : 1);
+    card.strokeWeight = 1; card.strokeAlign = 'INSIDE';
+    card.layoutGrow  = 1;
+    card.layoutAlign = 'STRETCH';
+    card.appendChild(txt(md.label, { size:10, color:C.ghost, weight:'Medium' }));
+    card.appendChild(txt(md.value, { size:24, color:md.accent ? C.accent : C.ink, weight:'Bold' }));
+    card.appendChild(txt(md.sub,   { size:10, color:C.ghost }));
     metricsStrip.appendChild(card);
   }
 
-  // ── Main area: flex-1 overflow-hidden → layoutGrow=1
-  const mainArea = mkFrame({ gap:0, bg:C.canvas, stretch:true, grow:true, name:'main' });
+  // ── Main area: grid grid-cols-[300px_1fr_300px] gap-px h-full bg-border
+  const mainArea = mkFrame({ gap:1, bg:C.border, stretch:true, grow:true, name:'main' });
 
-  // Left col: EntityPanel, 300px fixed width, fill height
-  const leftCol = mkFrame({ dir:'VERTICAL', gap:0, bg:C.panel, name:'EntityPanel', cross:'FIXED' });
+  // Left col (300px fixed): EntityPanel "all" instance
+  const leftCol = mkFrame({ dir:'VERTICAL', gap:0, bg:C.canvas, name:'left', cross:'FIXED' });
   leftCol.resize(300, 10);
   leftCol.layoutAlign = 'STRETCH';
-  const leftHdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
-                              bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE', stretch:true });
-  leftHdr.appendChild(txt('ENTITIES', { size:11, weight:'Semi Bold', color:C.ghost }));
-  leftHdr.appendChild(txt('2 assets · 1 track', { size:10, color:C.ghost }));
-  leftCol.appendChild(leftHdr);
+  const epInst = epVariants[0].createInstance();
+  epInst.layoutAlign = 'STRETCH';
+  epInst.layoutGrow = 1;
+  leftCol.appendChild(epInst);
 
-  // Center col: SystemLog + ProximityAlert, fills remaining width
-  const centerCol = mkFrame({ dir:'VERTICAL', gap:12, px:12, py:12, bg:C.canvas, name:'center' });
+  // Center col (flex-1): ProximityAlerts section (shrink-0) + SystemLog (flex-1)
+  const centerCol = mkFrame({ dir:'VERTICAL', gap:1, bg:C.border, name:'center' });
   centerCol.layoutGrow  = 1;
   centerCol.layoutAlign = 'STRETCH';
-  centerCol.appendChild(txt('ProximityAlert + SystemLog', { size:11, color:C.ghost }));
+  // ProximityAlerts section: p-3=12, gap-2=8, border-b bg-panel shrink-0
+  const proxSection = mkFrame({ dir:'VERTICAL', gap:8, px:12, py:12,
+                                  bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE',
+                                  stretch:true, name:'ProximityAlerts' });
+  proxSection.appendChild(txt('PROXIMITY ALERTS', { size:11, weight:'Semi Bold', color:C.ghost }));
+  const proxInst = proxVariants[0].createInstance(); // WithinRange
+  proxInst.layoutAlign = 'STRETCH';
+  proxSection.appendChild(proxInst);
+  centerCol.appendChild(proxSection);
+  // SystemLog: flex-1, fill remaining height
+  const logInst = slComp.createInstance();
+  logInst.layoutAlign = 'STRETCH';
+  logInst.layoutGrow = 1;
+  centerCol.appendChild(logInst);
 
-  // Right col: TaskPanel, 300px fixed width, fill height
-  const rightCol = mkFrame({ dir:'VERTICAL', gap:0, bg:C.panel, name:'TaskPanel', cross:'FIXED' });
+  // Right col (300px fixed): TaskPanel "WithTasks" instance
+  const rightCol = mkFrame({ dir:'VERTICAL', gap:0, bg:C.canvas, name:'right', cross:'FIXED' });
   rightCol.resize(300, 10);
   rightCol.layoutAlign = 'STRETCH';
-  const rightHdr = mkFrame({ mainAlign:'SPACE_BETWEEN', crossAlign:'CENTER', px:16, py:12,
-                               bg:C.panel, stroke:C.border, sw:1, sa:'OUTSIDE', stretch:true });
-  rightHdr.appendChild(txt('ACTIVE TASKS', { size:11, weight:'Semi Bold', color:C.ghost }));
-  rightHdr.appendChild(txt('1 active', { size:10, color:C.ghost }));
-  rightCol.appendChild(rightHdr);
+  const tpInst = tpVariants[0].createInstance(); // WithTasks
+  tpInst.layoutAlign = 'STRETCH';
+  tpInst.layoutGrow = 1;
+  rightCol.appendChild(tpInst);
 
   mainArea.appendChild(leftCol);
   mainArea.appendChild(centerCol);
