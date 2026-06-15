@@ -402,12 +402,12 @@ X = 100; Y += 200;
     badgeRow.appendChild(dispBadge);
 
     var metaRow = mkFrame({ gap:16, crossAlign:'MIN', stretch:true });
-    var metaLeft = mkFrame({ dir:'VERTICAL', gap:2, grow:true });
+    var metaLeft = mkFrame({ dir:'VERTICAL', gap:2, crossAlign:'MIN', grow:true });
     metaLeft.appendChild(txt('LOCATION',      { size:10, color:C.ghost, weight:'Medium' }));
     metaLeft.appendChild(txt(d.lat+'°, '+d.lng+'°', { size:11, color:C.dim, family:MONO.family, style:MONO.style, name:'Location' }));
     metaLeft.appendChild(txt('DATA TYPE',     { size:10, color:C.ghost, weight:'Medium' }));
     metaLeft.appendChild(txt(d.dataType,      { size:11, color:C.dim, name:'DataType' }));
-    var metaRight = mkFrame({ dir:'VERTICAL', gap:2, grow:true });
+    var metaRight = mkFrame({ dir:'VERTICAL', gap:2, crossAlign:'MIN', grow:true });
     metaRight.appendChild(txt('ENVIRONMENT',  { size:10, color:C.ghost, weight:'Medium' }));
     metaRight.appendChild(txt(d.env,          { size:11, color:C.dim, name:'Environment' }));
     metaRight.appendChild(txt('UPDATED',      { size:10, color:C.ghost, weight:'Medium' }));
